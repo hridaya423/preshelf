@@ -474,6 +474,7 @@ async function open([pid, rid] = []) {
   if (!dialog.open) dialog.showModal();
   if (S.job !== job()) {
     Object.assign(S, { job: job(), layout: null, meta: null, pid: null, rid: null, costs: {}, R: null, cand: null });
+    $("pl-pack")?.setAttribute("hidden", "");
     showView(false);
   }
   renderHistory();

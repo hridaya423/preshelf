@@ -45,7 +45,7 @@
 #placement .pl-section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 #placement .pl-canvas-bed { display: grid; place-items: center; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 #placement .pl-inspector { padding-left: 20px; border-left: 1px solid var(--line); }
-#placement .pl-inspector > .pl-section-head { display: grid; gap: 12px; }
+#placement .pl-inspector > .pl-section-head { display: grid; gap: 12px; justify-content: stretch; }
 #placement .pl-settings { border-top: 1px solid var(--line); padding-bottom: 4px; }
 #placement .pl-settings > :not(summary) { margin-top: 0; margin-bottom: 16px; }
 #placement .pl-formula { font-size: 14px; }

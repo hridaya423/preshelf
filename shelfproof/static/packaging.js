@@ -160,7 +160,8 @@ const postJSON = (body) => ({ method: "POST", headers: { "Content-Type": "applic
 function setPending(value) {
   S.pending = value;
   stage.setAttribute("aria-busy", String(value));
-  for (const el of dialog.querySelectorAll("button, input, select, textarea")) if (el.id !== "lab-close") el.disabled = value;
+  for (const el of dialog.querySelectorAll("button, input, select, textarea")) if (!["lab-close", "lab-theme"].includes(el.id)) el.disabled = value;
+  if (dialog.dataset.step === "results" && S.compareK) setCompareMode(S.compareMode);
 }
 
 function writeHash() {
@@ -483,15 +484,17 @@ function renderResults(v, path) {
     </article>`);
   }
   $("lab-grid").innerHTML = cards.join("") || (running ? "" : `<p class="lab-hint">No concepts were produced.</p>`);
+  const choose = (k) => compare(k, has(`shelf_${k}.png`) ? url(`shelf_${k}.png`) : null, has(`variant_${k}.png`) ? url(`variant_${k}.png`) : null);
   for (const btn of $("lab-grid").querySelectorAll("[data-action]")) {
-    const k = Number(btn.dataset.k), shelfUrl = url(`shelf_${k}.png`);
-    btn.onclick = btn.dataset.action === "compare" ? () => compare(k, shelfUrl) : () => viewOnShelf(k, shelfUrl);
+    const k = Number(btn.dataset.k);
+    btn.onclick = btn.dataset.action === "compare" ? () => choose(k) : () => viewOnShelf(k, url(`shelf_${k}.png`));
     btn.disabled = S.pending;
   }
+  const first = [...Array(total).keys()].map((i) => i + 1).find((k) => has(`shelf_${k}.png`) || has(`variant_${k}.png`));
+  if (S.compareK && (has(`shelf_${S.compareK}.png`) || has(`variant_${S.compareK}.png`))) choose(S.compareK);
+  else if (first) choose(first);
   if (refocus) $("lab-grid").querySelector(refocus)?.focus();
-  const firstShelf = [...Array(total).keys()].map((i) => i + 1).find((k) => has(`shelf_${k}.png`));
-  if (S.compareK && has(`shelf_${S.compareK}.png`)) compare(S.compareK, url(`shelf_${S.compareK}.png`));
-  else if (firstShelf) compare(firstShelf, url(`shelf_${firstShelf}.png`));
+  $("lab-results-empty").textContent = running ? "Your concepts will appear here as they become available. You can return to the brief without losing your entries." : "No shelf concepts are available. Edit the brief to try again, or choose a previous set from Products & history.";
 }
 
 async function viewOnShelf(k, shelfUrl) {
@@ -501,17 +504,41 @@ async function viewOnShelf(k, shelfUrl) {
   await window.shelfproof.showTexture(shelfUrl, `Concept ${k} on shelf`);
 }
 
-function compare(k, shelfUrl) {
+function compare(k, shelfUrl, packUrl) {
   S.compareK = k;
-  for (const btn of $("lab-grid").querySelectorAll(".lab-compare-btn")) btn.setAttribute("aria-pressed", String(Number(btn.dataset.k) === k));
+  S.shelfUrl = shelfUrl;
+  S.packUrl = packUrl;
+  for (const btn of $("lab-grid").querySelectorAll(".lab-compare-btn")) {
+    const selected = Number(btn.dataset.k) === k;
+    btn.setAttribute("aria-pressed", String(selected));
+    btn.nextElementSibling.hidden = !selected;
+  }
   const src = `${base()}/source.png`;
   for (const id of ["lab-cmp-a", "lab-sl-a"]) if ($(id).getAttribute("src") !== src) $(id).src = src;
-  for (const id of ["lab-cmp-b", "lab-sl-b"]) if ($(id).getAttribute("src") !== shelfUrl) $(id).src = shelfUrl;
+  if (shelfUrl) for (const id of ["lab-cmp-b", "lab-sl-b"]) if ($(id).getAttribute("src") !== shelfUrl) $(id).src = shelfUrl;
+  if (packUrl && $("lab-pack-image").getAttribute("src") !== packUrl) $("lab-pack-image").src = packUrl;
+  $("lab-pack-image").alt = $("lab-pack-caption").textContent = `Concept ${k} · packshot`;
   $("lab-cmp-b").alt = $("lab-sl-b").alt = `Concept ${k} on the shelf (after)`;
   $("lab-cmp-b-cap").textContent = `Concept ${k} on shelf`;
+  $("lab-after-label").textContent = `Concept ${k}`;
   $("lab-compare-h").textContent = `Original shelf vs. concept ${k}`;
   $("lab-compare").hidden = false;
+  $("lab-results-empty").hidden = true;
+  setCompareMode(S.compareMode || "wipe");
 }
+function setCompareMode(mode) {
+  if (!S.shelfUrl) mode = "pack";
+  else if (mode === "pack" && !S.packUrl) mode = "wipe";
+  S.compareMode = mode;
+  $("lab-side").hidden = mode !== "side";
+  $("lab-slider").hidden = $("lab-range-label").hidden = mode !== "wipe";
+  $("lab-pack-view").hidden = mode !== "pack";
+  for (const btn of dialog.querySelectorAll("[data-compare-mode]")) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.compareMode === mode));
+    btn.disabled = S.pending || !(btn.dataset.compareMode === "pack" ? S.packUrl : S.shelfUrl);
+  }
+}
+for (const btn of dialog.querySelectorAll("[data-compare-mode]")) btn.onclick = () => setCompareMode(btn.dataset.compareMode);
 $("lab-range").addEventListener("input", (e) => $("lab-slider").style.setProperty("--pos", `${e.target.value}%`));
 
 async function loadProducts() {
