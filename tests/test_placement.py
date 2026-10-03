@@ -169,3 +169,20 @@ def test_position_prior_is_floored():
     _, _, _, ctx = shelf()
     e, c = position_prior((W, H), ctx["rows"], validate_persona(PRESETS[0]), validate_assumptions({}))
     assert e.min() >= 0.3 and c.min() >= 0.5 and e.max() <= 1 and np.isclose(c.max(), 1, atol=1e-3)
+
+
+def test_packaging_attention_compares_concepts(tmp_path):
+    from shelfproof.placement import execute_attention
+    src, labels, mask, _ = shelf()
+    job = tmp_path / "abcdefabcdef"
+    v = job / "products" / "8e2750fd" / "variants" / "11112222"
+    v.mkdir(parents=True)
+    Image.fromarray(mask.astype(np.uint8) * 255).save(job / "products" / "8e2750fd" / "mask.png")
+    for k in (1, 2):
+        Image.fromarray(src).save(v / f"shelf_{k}.png")
+    flat = np.full((H, W), -np.log(H * W))
+    hot = flat.copy()
+    hot[mask] += 3
+    res = execute_attention(job, "8e2750fd", "11112222", lambda calls: iter([flat, hot, flat]))
+    assert [r["key"] for r in res["rows"]] == ["original", "1", "2"] and res["best"] == "1"
+    assert res["rows"][1]["delta_pp"] > 0 and res["rows"][2]["delta_pp"] == 0 and "Concept 1" in res["reasons"][0]

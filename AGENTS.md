@@ -2,11 +2,11 @@
 
 Input is a single shelf photo, not video; the video plan in `docs/plans/2026-10-03-shelfproof-phase1.md` is historical. Hobby/hackathon project: noncommercial model licences are acceptable.
 
-- Tests: `uv run pytest -q`.
+- Tests: `uv run pytest -q` (viewer lifecycle regression uses Node.js). The viewer retains one mesh per job across view switches and releases it when changing jobs; source/mesh/metadata URLs are immutable and privately browser-cached.
 - Browser app: `uv run modal serve shelfproof/app.py` (hot-reloads on save; the dev URL `https://hridayahoney--shelfproof-web-dev.modal.run` only works while it runs, and returns `modal-http: invalid function call` for a few seconds during reloads).
 - CLI: `uv run modal run shelfproof/app.py --image samples/shelf.png` writes `out/<job>.glb`, `.scene.json`, `.ply`.
 - Default 3D: MoGe-2 ViT-L normal (`Ruicheng/moge-2-vitl-normal`, pinned revision + MoGe commit in `app.py`) on L4 → `shelfproof/mesh.py` builds an unlit mesh textured with the full-resolution `source.png`. ~20 s/job, ~1 s inference. Depth jumps are cut (edge_threshold 0.04), not bridged. Legacy Depth-Anything-Small splat (`scene.ply`) is kept only for comparison.
-- Verified mesh job: `9fdc83856ba9` (`/?job=9fdc83856ba9`).
+- Default shelf: `samples/shelf.png` (1300×975 Tesco Easter-egg aisle, Alamy watermark strip cropped) = job `38c17fd769fe` (`DEFAULT_JOB` in app.py; `/` redirects to it). Old 686×446 sample removed.
 - Readable package text is capped by the uploaded photo's resolution; never "sharpen" text generatively.
 - Jobs live on the `shelfproof-jobs` Modal Volume: `reload()` before reading another container's writes, `commit()` after writing. `mesh.glb` is written last and is the done marker for new jobs.
 - Secrets: `RUNWARE_API_KEY`, `REACTOR_API_KEY` in `.env` (gitignored), passed to Modal via `Secret.from_dotenv`. Never print or return them.

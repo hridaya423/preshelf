@@ -1,8 +1,8 @@
+![PreShelf](docs/banner.png)
+
 # PreShelf
 
 Test your packaging and shelf placement on the shelf you actually have to win.
-
-![A real supermarket shelf rebuilt in 3D from one photo](samples/quality-mesh-orbit.png)
 
 Upload one photo of a supermarket shelf. PreShelf turns it into a 3D aisle you can orbit, redesigns your pack in place next to its real competitors, and predicts which spot on the shelf earns the most attention for what it costs.
 
@@ -19,6 +19,8 @@ PreShelf starts from a photo of that store.
 ### 1. Walk the aisle in 3D
 
 About twenty seconds after you upload a photo, it's a textured 3D model you can drag, zoom and download. MoGe-2 estimates the shelf's geometry and surface normals from that single image, and the texture is your original photo at full resolution, so competitors' labels look the way they did in the store. Where one product stands in front of another, the mesh splits at the edge instead of stretching a fake wall between them.
+
+![A real supermarket shelf rebuilt in 3D from one photo](samples/quality-mesh-orbit.png)
 
 ### 2. Redesign your pack where it lives
 

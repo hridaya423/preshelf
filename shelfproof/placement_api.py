@@ -37,6 +37,16 @@ GET  /api/jobs/{job}/placement/runs/{rid}
     Shares are fractions 0-1 of modelled attention inside the product mask; rank 1 = most attention of all products.
 GET  /api/jobs/{job}/placement/runs/{rid}/{scene_I.png|heat_I_P.png|sal_I_P.png}
     scene_I: RGB, source size, shelf with the product moved to slot I. heat/sal: RGBA overlays, source size.
+
+Packaging attention (DeepGaze IIE on the phase-2 concepts, same photo/viewpoint/position):
+GET  /api/jobs/{job}/placement/packaging/{pid} -> [{"vid", "state", "files": [shelf_K.png], "created", "brief"}]
+POST /api/jobs/{job}/placement/packaging/{pid}/{vid} -> Attention (starts scoring unless running/done)
+GET  /api/jobs/{job}/placement/packaging/{pid}/{vid} -> Attention
+    Attention = {"state": "missing"|"running"|"done"|"failed", "done_count", "total", "error",
+                 "results": {"rows": [{"key": "original"|"K", "label", "image": path under /api/jobs/{job}/
+                 (source.png or products/{pid}/variants/{vid}/shelf_K.png), "heatmap", "saliency_share", "rank",
+                 "n_products", "delta_pp", "ratio"}], "best": key, "reasons": [str], "disclaimer"}|null}
+GET  /api/jobs/{job}/placement/packaging/{pid}/{vid}/{sal_original.png|sal_K.png} -> RGBA overlay, source size
 """
 import json
 import re
@@ -52,7 +62,7 @@ PID = re.compile(r"^[0-9a-f]{8}$")
 RUN_FILE = re.compile(r"^(scene_[0-7]|(heat|sal)_[0-7]_[0-5])\.png$")
 
 
-def register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, model_info=None):
+def register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, model_info=None, score_packaging=None):
     from shelfproof import placement as pl
 
     def read_json(path: Path) -> dict:
@@ -201,5 +211,64 @@ def register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, 
         jobs.reload()
         path = run_dir(job_id, rid) / name
         if not RUN_FILE.fullmatch(name) or not path.is_file():
+            raise HTTPException(404, "Not found")
+        return FileResponse(path, media_type="image/png")
+
+    def variant_set_dir(job_id: str, pid: str, vid: str) -> Path:
+        path = job_dir(job_id) / "products" / pid / "variants" / vid
+        if not (PID.fullmatch(pid) and PID.fullmatch(vid)) or not (path / "status.json").is_file():
+            raise HTTPException(404, "Unknown variant set")
+        return path
+
+    @api.get("/api/jobs/{job_id}/placement/packaging/{pid}")
+    def variant_sets(job_id: str, pid: str):
+        jobs.reload()
+        root = job_dir(job_id) / "products" / pid / "variants"
+        if not PID.fullmatch(pid) or not root.is_dir():
+            return []
+        out = []
+        for d in root.iterdir():
+            if PID.fullmatch(d.name) and (d / "status.json").is_file() and (d / "prompt.json").is_file():
+                meta = read_json(d / "prompt.json")
+                out.append({"vid": d.name, "state": read_json(d / "status.json").get("state"),
+                            "files": sorted(p.name for p in d.glob("shelf_[1-4].png")),
+                            "created": meta.get("created", 0), "brief": meta.get("brief", {})})
+        return sorted(out, key=lambda v: -v["created"])
+
+    def attention_response(job_id: str, pid: str, vid: str) -> dict:
+        variant_set_dir(job_id, pid, vid)
+        path = job_dir(job_id) / "placement" / "packaging" / f"{pid}-{vid}"
+        if not (path / "status.json").is_file():
+            return {"state": "missing", "done_count": 0, "total": 0, "error": None, "results": None}
+        status = call_state(path, read_json(path / "status.json"), "Attention scoring")
+        return {**status, "results": read_json(path / "results.json") if status["state"] == "done" else None}
+
+    @api.get("/api/jobs/{job_id}/placement/packaging/{pid}/{vid}")
+    def get_attention(job_id: str, pid: str, vid: str):
+        jobs.reload()
+        return attention_response(job_id, pid, vid)
+
+    @api.post("/api/jobs/{job_id}/placement/packaging/{pid}/{vid}")
+    def start_attention(job_id: str, pid: str, vid: str):
+        jobs.reload()
+        current = attention_response(job_id, pid, vid)
+        if current["state"] in ("running", "done"):
+            return current
+        if not any(variant_set_dir(job_id, pid, vid).glob("shelf_[1-4].png")):
+            raise HTTPException(409, "This variant set has no shelf images yet")
+        path = job_dir(job_id) / "placement" / "packaging" / f"{pid}-{vid}"
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "status.json").write_text(json.dumps({"state": "running", "done_count": 0, "total": 0, "error": None}))
+        jobs.commit()
+        (path / "call_id").write_text(score_packaging.spawn(job_id, pid, vid).object_id)
+        jobs.commit()
+        return attention_response(job_id, pid, vid)
+
+    @api.get("/api/jobs/{job_id}/placement/packaging/{pid}/{vid}/{name}")
+    def attention_file(job_id: str, pid: str, vid: str, name: str):
+        jobs.reload()
+        variant_set_dir(job_id, pid, vid)
+        path = job_dir(job_id) / "placement" / "packaging" / f"{pid}-{vid}" / name
+        if not re.fullmatch(r"sal_(original|[1-4])\.png", name) or not path.is_file():
             raise HTTPException(404, "Not found")
         return FileResponse(path, media_type="image/png")

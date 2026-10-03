@@ -584,3 +584,68 @@ def masks_to_detections(masks, scores, **params):
         fx0, fy0, fx1, fy1 = _bbox(free)
         dets.append({"id": i, "bbox": [x0 + fx0, y0 + fy0, x0 + fx1, y0 + fy1], "score": round(k["score"], 4)})
     return labels, dets
+
+
+SALIENCY_PATH = re.compile(r"^(source\.png|products/[0-9a-f]{8}/variants/[0-9a-f]{8}/shelf_[1-4]\.png|"
+                           r"placement/runs/[0-9a-f]{8}/scene_[0-7]\.png)$")
+
+
+def execute_attention(job: Path, pid: str, vid: str, predict, commit=lambda: None) -> dict:
+    """Score the original shelf and every generated concept (shelf_K.png) with saliency inside the product mask."""
+    out = job / "placement" / "packaging" / f"{pid}-{vid}"
+    out.mkdir(parents=True, exist_ok=True)
+    vdir = job / "products" / pid / "variants" / vid
+    shelves = sorted(vdir.glob("shelf_[1-4].png"))
+    names = [("original", "Original pack", "source.png")] + [
+        (p.stem.split("_")[1], f"Concept {p.stem.split('_')[1]}", f"products/{pid}/variants/{vid}/{p.name}") for p in shelves]
+    status = {"state": "running", "done_count": 0, "total": len(names), "error": None}
+
+    def save():
+        (out / "status.json").write_text(json.dumps(status))
+        commit()
+
+    try:
+        if not shelves:
+            raise ValueError("This variant set has no shelf images yet")
+        save()
+        mask = np.asarray(Image.open(job / "products" / pid / "mask.png").convert("L")) > 127
+        if (job / "placement" / "layout" / "layout.json").is_file():
+            src, labels, mask, ctx = load_inputs(job, pid)
+            _, labels, P = render_scene(src, labels, mask, ctx, make_slot(ctx, "current"))
+        else:
+            labels, P = mask.astype(np.int32), 1
+        rows = []
+        for k, logd in enumerate(predict([(job.name, rel) for _, _, rel in names])):
+            key, label, rel = names[k]
+            s = np.exp(np.asarray(logd, np.float64) - np.max(logd))
+            s /= s.sum()
+            masses = np.bincount(labels.ravel(), weights=s.ravel(), minlength=P + 1)
+            present = np.unique(labels)
+            present = present[(present > 0) & (present != P)]
+            colorize(s).save(out / f"sal_{key}.png")
+            rows.append({"key": key, "label": label, "image": rel, "heatmap": f"sal_{key}.png",
+                         "saliency_share": round(float(s[mask].sum()), 6),
+                         "rank": int((masses[present] > masses[P]).sum()) + 1, "n_products": int(len(present)) + 1})
+            status["done_count"] = k + 1
+            save()
+        base = rows[0]["saliency_share"]
+        for r in rows:
+            r["delta_pp"] = round((r["saliency_share"] - base) * 100, 2)
+            r["ratio"] = round(r["saliency_share"] / base, 3) if base > 0 else None
+        best = max(rows, key=lambda r: r["saliency_share"])
+        reasons = [f"{best['label']} draws {best['saliency_share']:.1%} of predicted attention on the shelf vs "
+                   f"{base:.1%} for the original ({best['delta_pp']:+.1f} pp)" + (
+                       f", rank #{best['rank']} of {best['n_products']} products." if best is not rows[0] else ".")]
+        if best is rows[0]:
+            reasons = [f"The original pack draws the most predicted attention ({base:.1%}); no concept beats it."]
+        reasons.append("Same photo, viewpoint and position for every pack, so differences come from the pack design. "
+                       "Pure DeepGaze IIE saliency (no persona priors).")
+        results = {"rows": rows, "best": best["key"], "reasons": reasons, "disclaimer": DISCLAIMER}
+        (out / "results.json").write_text(json.dumps(results, allow_nan=False))
+        status["state"] = "done"
+        save()
+        return results
+    except Exception as exc:
+        status.update(state="failed", error=f"Attention scoring failed: {exc}")
+        save()
+        raise

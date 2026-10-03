@@ -11,6 +11,7 @@ jobs = modal.Volume.from_name("shelfproof-jobs", create_if_missing=True)
 JOBS = Path("/jobs")
 JOB_ID = re.compile(r"^[0-9a-f]{12}$")
 MAX_UPLOAD = 20 * 1024 * 1024
+DEFAULT_JOB = "38c17fd769fe"
 DEPTH_MODEL = "depth-anything/Depth-Anything-V2-Small-hf"
 DEPTH_REVISION = "5426e4f0f36572d16453bbda7a8389317b1bef99"
 MESH_MODEL = "Ruicheng/moge-2-vitl-normal"
@@ -458,17 +459,24 @@ class Saliency:
 
     @modal.method()
     def predict(self, job_id: str, rid: str, slot: int, distance_m: float, photo_distance_m: float):
+        return self._predict(job_id, f"placement/runs/{rid}/scene_{int(slot)}.png", distance_m, photo_distance_m)
+
+    @modal.method()
+    def predict_path(self, job_id: str, rel: str):
+        return self._predict(job_id, rel, 1.0, 1.0)
+
+    def _predict(self, job_id: str, rel: str, distance_m: float, photo_distance_m: float):
         import numpy as np
         import torch
         import torch.nn.functional as F
         from PIL import Image
 
-        from shelfproof.placement import distance_blur
+        from shelfproof.placement import SALIENCY_PATH, distance_blur
 
-        if not (JOB_ID.fullmatch(job_id) and re.fullmatch(r"[0-9a-f]{8}", rid) and 0 <= int(slot) < 8):
+        if not (JOB_ID.fullmatch(job_id) and SALIENCY_PATH.fullmatch(rel)):
             raise ValueError("Invalid ID")
         jobs.reload()
-        with Image.open(JOBS / job_id / "placement" / "runs" / rid / f"scene_{int(slot)}.png") as img:
+        with Image.open(JOBS / job_id / rel) as img:
             rgb = np.asarray(distance_blur(img.convert("RGB"), distance_m, photo_distance_m))
         h, w = rgb.shape[:2]
         scale = SALIENCY_LONG_SIDE / max(h, w)
@@ -493,6 +501,16 @@ def run_placement(job_id: str, rid: str) -> None:
     execute_run(JOBS / job_id, rid, lambda calls: Saliency().predict.starmap(calls), jobs.commit)
 
 
+@app.function(image=variant_image, volumes={str(JOBS): jobs}, timeout=600, max_containers=4)
+def score_packaging(job_id: str, pid: str, vid: str) -> None:
+    from shelfproof.placement import execute_attention
+
+    if not (JOB_ID.fullmatch(job_id) and re.fullmatch(r"[0-9a-f]{8}", pid) and re.fullmatch(r"[0-9a-f]{8}", vid)):
+        raise ValueError("Invalid ID")
+    jobs.reload()
+    execute_attention(JOBS / job_id, pid, vid, lambda calls: Saliency().predict_path.starmap(calls), jobs.commit)
+
+
 web_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("fastapi[standard]", "pillow==11.2.1", "numpy==2.2.5")
@@ -505,7 +523,7 @@ web_image = (
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, HTTPException, UploadFile
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, RedirectResponse
     from fastapi.staticfiles import StaticFiles
     from starlette.middleware.gzip import GZipMiddleware
 
@@ -519,7 +537,9 @@ def web():
         return JOBS / job_id
 
     @api.get("/")
-    def index():
+    def index(job: str | None = None):
+        if job is None:
+            return RedirectResponse(f"/?job={DEFAULT_JOB}")
         return FileResponse("/static/index.html")
 
     @api.post("/api/jobs")
@@ -548,7 +568,7 @@ def web():
             return {"state": "failed", "error": (job / "error.txt").read_text()}
         if (job / "mesh.glb").exists() and (job / "scene.json").exists():
             metadata = json.loads((job / "scene.json").read_text())
-            return {"state": "done", "representation": "textured-mesh", "model": metadata["model"]}
+            return {"state": "done", "representation": "textured-mesh", "model": metadata["model"], "metadata": metadata}
         if not (job / "pipeline").exists() and (job / "scene.ply").exists():
             return {"state": "done", "representation": "splat", "model": DEPTH_MODEL}
         if not (job / "call_id").exists():
@@ -574,7 +594,7 @@ def web():
         path = job_dir(job_id) / filename
         if not path.is_file():
             raise HTTPException(404, "Artifact not ready")
-        return FileResponse(path, media_type=media_type)
+        return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
     @api.get("/api/jobs/{job_id}/source.png")
     def source(job_id: str):
@@ -593,7 +613,7 @@ def web():
     register_packaging_routes(api, jobs, job_dir, segment_product, generate_variants)
     from shelfproof.placement_api import register_placement_routes
 
-    register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, PLACEMENT_MODEL)
+    register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, PLACEMENT_MODEL, score_packaging)
     return api
 
 

@@ -18,63 +18,73 @@ const dialog = document.createElement("dialog");
 dialog.id = "placement";
 dialog.setAttribute("aria-labelledby", "pl-title");
 dialog.innerHTML = `
-<div class="pl-head">
+<header class="pl-head">
+  <strong class="pl-brand">PreShelf</strong>
   <h2 id="pl-title">Placement test</h2>
-  <p id="pl-status" role="status" aria-live="polite"></p>
-  <button type="button" id="pl-close">Close</button>
-</div>
+  <div class="pl-head-actions"><button type="button" id="pl-theme">Switch theme</button><button type="button" id="pl-close">Back to shelf</button></div>
+</header>
 <div class="pl-body">
-  <section class="pl-products" aria-labelledby="pl-products-h">
-    <h3 id="pl-products-h">Product</h3>
-    <ul id="pl-product-list"></ul>
-  </section>
-  <p class="pl-disclaimer"><strong>${DISCLAIMER}</strong> <span id="pl-server-disclaimer"></span></p>
-  <form id="pl-setup" hidden>
-    <section aria-labelledby="pl-slots-h">
-      <h3 id="pl-slots-h">1. Slots to compare</h3>
-      <p id="pl-instr" class="pl-hint">Click the photo to add a slot: on a product to swap with it, on empty shelf to place it there. Keyboard: focus the photo, move the crosshair with arrow keys (Shift for bigger steps), press Enter. Up to ${MAX_SLOTS} slots including the current position.</p>
-      <div id="pl-stage" tabindex="0" role="application" aria-label="Shelf photo for adding slots" aria-describedby="pl-instr">
+  <div class="pl-workbar">
+    <details class="pl-products" id="pl-products" open>
+      <summary>Product <strong id="pl-product-name">Choose a selection</strong></summary>
+      <ul id="pl-product-list"></ul>
+    </details>
+    <details id="pl-history"><summary>Run history</summary><div class="pl-history-body"><p class="pl-hint">Runs opened in this browser. To revisit an older run, paste its eight-character run ID or open its saved link.</p><ul id="pl-history-list"></ul><form id="pl-open-run"><label>Run ID<input name="rid" pattern="[0-9a-f]{8}" maxlength="8" required placeholder="e.g. a1b2c3d4"></label><button>Open run</button></form></div></details>
+    <nav class="pl-nav" aria-label="Placement workspace"><button type="button" id="pl-show-setup" aria-pressed="true">Slots & shoppers</button><button type="button" id="pl-show-results" aria-pressed="false" disabled>Results</button></nav>
+  </div>
+  <p class="pl-disclaimer">${DISCLAIMER} <span id="pl-server-disclaimer"></span></p>
+  <form id="pl-setup" class="pl-workspace" hidden>
+    <section class="pl-canvas" aria-labelledby="pl-slots-h">
+      <div class="pl-section-head"><h3 id="pl-slots-h">Compare shelf positions</h3><span class="pl-hint" id="pl-slot-count"></span></div>
+      <div class="pl-canvas-bed"><div id="pl-stage" tabindex="0" role="application" aria-label="Shelf photo for adding slots" aria-describedby="pl-instr">
         <img id="pl-photo" alt="Original shelf photo" draggable="false">
-        <div id="pl-mask" hidden></div>
-        <div id="pl-boxes"></div>
-        <div id="pl-cursor" hidden></div>
-      </div>
-      <fieldset><legend>Slots (tick to include)</legend><ol id="pl-slot-list"></ol></fieldset>
-      <p class="pl-hint">Slot cost is optional and <strong>user-entered</strong> (e.g. a listing or slotting fee you know). It stays in your browser and is only used to show attention share per £100.</p>
+        <div id="pl-mask" hidden></div><div id="pl-boxes"></div><div id="pl-cursor" hidden></div>
+      </div></div>
+      <p id="pl-instr" class="pl-hint">Click a product to swap, or empty shelf to place. Keyboard: focus the photo, use arrow keys (Shift for bigger steps), then Enter to add. Compare up to ${MAX_SLOTS} slots, including the current position.</p>
     </section>
-    <section aria-labelledby="pl-personas-h">
-      <h3 id="pl-personas-h">2. Shopper personas</h3>
-      <p class="pl-formula">Score: <code id="pl-formula"></code></p>
-      <fieldset class="pl-assume"><legend>Assumptions</legend>
-        ${Object.entries(ASSUME).map(([k, l]) => `<label>${l}<input type="number" name="${k}" min="0" step="any" required></label>`).join("")}
-      </fieldset>
-      <div id="pl-personas" class="pl-cards"></div>
-      <button type="button" id="pl-add-persona">Add persona</button>
-      <div id="pl-rationale" class="pl-hint"></div>
-    </section>
-    <button id="pl-run">Run placement test</button>
+    <aside class="pl-inspector" aria-label="Placement settings">
+      <div class="pl-section-head"><h3>Test settings</h3><button id="pl-run" type="submit">Run placement test</button></div>
+      <details open class="pl-settings"><summary>Slots & optional costs</summary>
+        <p class="pl-hint">Tick slots to include. The current position stays as your baseline.</p>
+        <ol id="pl-slot-list"></ol>
+        <p class="pl-hint">Costs are optional and <strong>user-entered</strong>, such as a known slotting fee. They stay in this browser and only calculate attention share per £100.</p>
+      </details>
+      <details class="pl-settings" id="pl-shopper-settings"><summary>Shopper personas <span id="pl-persona-count"></span></summary>
+        <p class="pl-hint">Compare eye heights, shopping missions and time pressure.</p>
+        <div id="pl-personas" class="pl-cards"></div><button type="button" id="pl-add-persona">Add persona</button>
+      </details>
+      <details class="pl-settings"><summary>Assumptions & score formula</summary>
+        <p class="pl-formula">Score: <code id="pl-formula"></code></p>
+        <fieldset class="pl-assume"><legend>Shelf & camera assumptions</legend>
+          ${Object.entries(ASSUME).map(([k, l]) => `<label>${l}<input type="number" name="${k}" min="0" step="any" required></label>`).join("")}
+        </fieldset><div id="pl-rationale" class="pl-hint"></div>
+      </details>
+    </aside>
   </form>
   <section id="pl-results" hidden aria-labelledby="pl-results-h">
-    <h3 id="pl-results-h">Results</h3>
-    <p class="pl-hint" id="pl-r-formula"></p>
-    <article id="pl-rec" class="pl-rec"></article>
-    <div class="pl-scroll"><table id="pl-table"></table></div>
-    <section aria-labelledby="pl-viewer-h">
-      <h4 id="pl-viewer-h">Attention heatmap</h4>
-      <div class="pl-row">
-        <label>Slot<select id="pl-v-slot"></select></label>
-        <div class="pl-row" role="group" aria-label="Persona" id="pl-v-personas"></div>
-        <label class="pl-inline"><input type="checkbox" id="pl-v-sal"> Saliency only (no persona priors)</label>
-        <label>Overlay opacity<input type="range" id="pl-v-op" min="0" max="100" value="80"></label>
-        <button type="button" id="pl-v-3d">View in 3D</button>
-      </div>
-      <div class="pl-heat pl-big"><img id="pl-v-scene" alt=""><img id="pl-v-heat" class="pl-over" alt=""></div>
-      <p id="pl-v-cap" class="pl-hint"></p>
-      <h4>All slots at a glance</h4>
-      <div id="pl-multi" class="pl-multi"></div>
-    </section>
+    <div class="pl-workspace">
+      <section class="pl-canvas" aria-labelledby="pl-results-h">
+        <div class="pl-section-head"><h3 id="pl-results-h">Attention heatmap</h3><span class="pl-hint">Model estimate</span></div>
+        <div class="pl-canvas-bed"><div class="pl-heat pl-big"><img id="pl-v-scene" alt=""><img id="pl-v-heat" class="pl-over" alt=""></div></div>
+        <p id="pl-v-cap" class="pl-hint"></p>
+      </section>
+      <aside class="pl-inspector" aria-label="Result selection">
+        <article id="pl-rec" class="pl-rec"></article>
+        <div class="pl-view-controls">
+          <label>Inspect slot<select id="pl-v-slot"></select></label>
+          <fieldset><legend>Shopper persona</legend><div role="group" aria-label="Persona" id="pl-v-personas"></div></fieldset>
+          <label class="pl-inline"><input type="checkbox" id="pl-v-sal"> Saliency only (no persona priors)</label>
+          <label>Overlay opacity<input type="range" id="pl-v-op" min="0" max="100" value="80"></label>
+          <button type="button" id="pl-v-3d">View in 3D</button>
+        </div>
+        <details class="pl-settings"><summary>Result assumptions & formula</summary><p class="pl-hint" id="pl-r-formula"></p><dl id="pl-r-assumptions"></dl></details>
+      </aside>
+    </div>
+    <details class="pl-result-detail" open><summary>All slots at a glance</summary><div id="pl-multi" class="pl-multi"></div></details>
+    <details class="pl-result-detail" open><summary>Ranked results & score breakdowns</summary><div class="pl-scroll" tabindex="0" role="region" aria-label="Ranked placement results"><table id="pl-table"></table></div></details>
   </section>
-</div>`;
+</div>
+<footer class="pl-statusbar"><p id="pl-status" role="status" aria-live="polite"></p></footer>`;
 document.body.append(dialog);
 
 const $ = (id) => document.getElementById(id);
@@ -107,7 +117,55 @@ function writeHash() {
 }
 const storeKey = () => `shelfproof:placement:${job()}`;
 
+function showView(results) {
+  $("pl-setup").hidden = results || !S.pid;
+  $("pl-results").hidden = !results;
+  $("pl-show-setup").setAttribute("aria-pressed", String(!results));
+  $("pl-show-results").setAttribute("aria-pressed", String(results));
+  $("pl-show-results").disabled = !S.R;
+}
+$("pl-show-setup").onclick = () => showView(false);
+$("pl-show-results").onclick = () => { if (S.R) renderResults(S.R, true); };
+$("pl-setup").addEventListener("invalid", (e) => {
+  for (let p = e.target.parentElement; p && p !== dialog; p = p.parentElement) if (p.tagName === "DETAILS") p.open = true;
+}, true);
+function syncTheme() {
+  $("pl-theme").textContent = `${document.documentElement.dataset.theme === "dark" ? "Light" : "Dark"} theme`;
+}
+$("pl-theme").onclick = () => $("theme")?.click();
+new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+syncTheme();
+
+function renderHistory(run) {
+  let runs = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(`${storeKey()}:runs`) || "[]");
+    runs = Array.isArray(saved) ? saved.filter((r) => PID.test(r.pid) && PID.test(r.rid)) : [];
+    if (run) {
+      runs = [run, ...runs.filter((r) => r.rid !== run.rid)].slice(0, 20);
+      localStorage.setItem(`${storeKey()}:runs`, JSON.stringify(runs));
+    }
+  } catch { /* storage unavailable */ }
+  $("pl-history-list").innerHTML = runs.length ? runs.map((r) => `<li><button type="button" data-pid="${r.pid}" data-rid="${r.rid}">${esc(r.name || "Placement run")} <span class="pl-hint">${r.rid}</span></button></li>`).join("") : '<li class="pl-hint">No runs opened here yet.</li>';
+}
+$("pl-history-list").onclick = (e) => {
+  const b = e.target.closest("[data-rid]");
+  if (b) { $("pl-history").open = false; selectProduct(b.dataset.pid, b.dataset.rid); }
+};
+$("pl-open-run").onsubmit = async (e) => {
+  e.preventDefault();
+  const rid = e.target.elements.rid.value;
+  try {
+    const run = await api(`/placement/runs/${rid}`);
+    $("pl-history").open = false;
+    await selectProduct(run.request.pid, rid);
+  } catch (err) { fail(err); }
+};
+
 function renderProducts() {
+  const selected = S.products.find((p) => p.pid === S.pid);
+  $("pl-product-name").textContent = selected?.name || (selected ? "Unnamed selection" : "Choose a selection");
+  $("pl-products").open = !selected;
   $("pl-product-list").innerHTML = S.products.length ? S.products.map((p) => `<li>
     <button type="button" class="pl-product" data-pid="${esc(p.pid)}" aria-current="${p.pid === S.pid}">
       <img src="${esc(`${base()}/products/${p.pid}/cutout.png`)}" alt="" loading="lazy"><span>${esc(p.name || "Unnamed selection")}</span>
@@ -123,14 +181,15 @@ const onCount = () => S.slots.filter((s) => s.on).length;
 
 function renderSlots() {
   const full = onCount() >= MAX_SLOTS, det = S.cand?.product_det;
+  $("pl-slot-count").textContent = `${onCount()} / ${MAX_SLOTS} slots included`;
   $("pl-boxes").innerHTML = (S.layout?.detections || []).map((d) => `<div class="pl-det${d.id === det ? " pl-prod" : ""}" style="${box(d.bbox)}"></div>`).join("")
     + S.slots.map((s, i) => `<div class="pl-rect${s.on ? " pl-on" : ""}" style="${box(s.rect)}"><button type="button" tabindex="-1" aria-hidden="true" data-chip="${i}">${i + 1}</button></div>`).join("");
   $("pl-slot-list").innerHTML = S.slots.map((s, i) => {
     const locked = s.kind === "current";
     return `<li class="pl-slot">
       <label class="pl-inline"><input type="checkbox" data-slot="${i}"${s.on ? " checked" : ""}${locked || (!s.on && full) ? " disabled" : ""}>
-        <span class="pl-num" aria-hidden="true">${i + 1}</span> ${esc(s.label)} <span class="pl-hint">(${esc(KINDS[s.kind] || s.kind)}${locked ? ", always included" : ""})</span></label>
-      <label class="pl-cost">Slot cost £ (user-entered, optional)<input type="number" min="0" step="any" inputmode="decimal" data-cost="${esc(s.id)}" value="${esc(S.costs[s.id] ?? "")}"></label>
+        <span class="pl-num" aria-hidden="true">${i + 1}</span><span>${esc(s.label)}<small class="pl-hint">${esc(KINDS[s.kind] || s.kind)}${locked ? " · always included" : ""}</small></span></label>
+      <label class="pl-cost">Optional cost (£)<input type="number" min="0" step="any" inputmode="decimal" data-cost="${esc(s.id)}" value="${esc(S.costs[s.id] ?? "")}"></label>
       ${s.user ? `<button type="button" data-del="${i}" aria-label="Remove slot ${i + 1}: ${esc(s.label)}">Remove</button>` : ""}
     </li>`;
   }).join("");
@@ -207,6 +266,7 @@ function renderPersonas() {
     <button type="button" data-remove="${i}"${n <= 1 ? " disabled" : ""}>Remove persona ${i + 1}</button>
   </fieldset>`).join("");
   $("pl-add-persona").disabled = n >= 6;
+  $("pl-persona-count").textContent = `(${n})`;
 }
 $("pl-personas").addEventListener("input", (e) => { const { i, k } = e.target.dataset; if (k) S.personas[i][k] = e.target.value; });
 $("pl-personas").addEventListener("click", (e) => {
@@ -252,14 +312,15 @@ async function loadLayout(token) {
 function sizeStage([w, h]) {
   S.size = [w, h];
   stage.style.aspectRatio = `${w} / ${h}`;
-  stage.style.width = `min(100%, calc(60dvh * ${w / h}))`;
+  stage.style.width = "100%";
 }
 
 async function selectProduct(pid, rid) {
   if (!PID.test(pid) || !S.products.some((p) => p.pid === pid)) return status("That product is not available for this job. Pick another.", { error: true });
   const token = ++S.token;
   setRunning(false);
-  S.pid = pid; S.rid = null; S.cand = null; S.slots = [];
+  S.pid = pid; S.rid = null; S.cand = null; S.slots = []; S.R = null;
+  showView(false);
   try { localStorage.setItem(storeKey(), pid); } catch { /* storage unavailable */ }
   writeHash();
   renderProducts();
@@ -280,6 +341,7 @@ async function selectProduct(pid, rid) {
     $("pl-mask").style.setProperty("--mask", `url("${base()}/products/${pid}/mask.png")`);
     $("pl-mask").hidden = false;
     renderSlots();
+    loadPackSets(pid).catch(fail);
     status("Pick slots and personas, then run the test.");
     if (rid && PID.test(rid)) await watchRun(rid, token);
   } catch (e) { if (token === S.token) fail(e); }
@@ -311,6 +373,8 @@ async function watchRun(rid, token) {
       const r = await api(`/placement/runs/${rid}`);
       if (token !== S.token) return;
       if (r.state === "done" && r.results) {
+        S.request = r.request;
+        renderHistory({ pid: S.pid, rid, name: S.products.find((p) => p.pid === S.pid)?.name });
         renderResults(r.results);
         return status(`Done · ${r.results.slots.length} slots × ${r.results.personas.length} personas.`);
       }
@@ -321,15 +385,16 @@ async function watchRun(rid, token) {
     }
   } finally { if (token === S.token) setRunning(false); }
 }
-function setRunning(v) { S.running = v; $("pl-run").disabled = v; }
+function setRunning(v) { S.running = v; $("pl-run").disabled = v; $("pl-run").textContent = v ? "Test running…" : "Run placement test"; }
 
 const pp = (s, p) => s.per_persona.find((x) => x.persona === p) ?? s.per_persona[p];
 const runFile = (name) => `${base()}/placement/runs/${S.rid}/${file(name)}`;
 const cost = (s) => { const c = Number(S.costs[s.id]); return S.costs[s.id] && c > 0 ? c : null; };
 
-function renderResults(R) {
+function renderResults(R, preserveSelection = false) {
   S.R = R;
-  S.sel = { slot: R.recommendation?.slot ?? R.ranking[0], p: 0, sal: false };
+  if (!preserveSelection) S.sel = { slot: R.recommendation?.slot ?? R.ranking[0], p: 0, sal: false };
+  $("pl-r-assumptions").innerHTML = Object.entries(S.request?.assumptions || {}).map(([k, v]) => `<dt>${esc(ASSUME[k] || k)}</dt><dd>${esc(v)}</dd>`).join("");
   $("pl-r-formula").innerHTML = `<strong>${esc(R.disclaimer || DISCLAIMER)}</strong>${R.formula ? ` Score: <code>${esc(R.formula)}</code>` : ""}`;
   const best = R.slots[R.recommendation?.slot];
   $("pl-rec").innerHTML = best ? `<h4>Recommended slot: ${esc(best.label)}</h4><ul>${(R.recommendation.reasons || []).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : "<p>No recommendation returned.</p>";
@@ -353,9 +418,9 @@ function renderResults(R) {
     }).join("")}</tbody>`;
   $("pl-v-slot").innerHTML = R.ranking.map((i) => `<option value="${i}">${esc(R.slots[i].label)}</option>`).join("");
   $("pl-v-personas").innerHTML = R.personas.map((p, j) => `<button type="button" data-p="${j}" aria-pressed="false">${esc(p.name)}</button>`).join("");
-  $("pl-v-sal").checked = false;
+  $("pl-v-sal").checked = S.sel.sal;
   $("pl-v-3d").disabled = !window.shelfproof?.showTexture;
-  $("pl-results").hidden = false;
+  showView(true);
   updateViewer();
 }
 
@@ -443,3 +508,44 @@ if (button) {
 }
 const restore = parseHash(initialHash);
 if (restore) open(restore);
+
+const pack = document.createElement("section");
+pack.id = "pl-pack";
+pack.hidden = true;
+pack.setAttribute("aria-labelledby", "pl-pack-h");
+pack.innerHTML = `<h3 id="pl-pack-h">Pack design attention</h3>
+<p class="pl-hint">Scores the original pack and each Packaging-lab concept with DeepGaze IIE in the same photo, viewpoint and shelf position, so differences come from the design. ${DISCLAIMER}</p>
+<div class="pl-row"><label>Concept set<select id="pl-pack-set"></select></label><button type="button" id="pl-pack-run">Score pack attention</button></div>
+<div id="pl-pack-out"></div>`;
+$("pl-setup").after(pack);
+
+async function loadPackSets(pid) {
+  const sets = (await api(`/placement/packaging/${pid}`)).filter((v) => v.files?.length);
+  pack.hidden = false;
+  $("pl-pack-set").innerHTML = sets.map((v) => `<option value="${esc(v.vid)}">${esc(v.brief?.price_tier || "")} ${esc(v.brief?.brand_tone || "")} · ${v.files.length} concepts · ${esc(v.vid)}</option>`).join("");
+  $("pl-pack-run").disabled = !sets.length;
+  $("pl-pack-out").innerHTML = sets.length ? "" : `<p class="pl-hint">No concepts yet for this product. Generate some in the Packaging lab first.</p>`;
+  if (sets.length) showPack(pid, sets[0].vid, false);
+}
+
+async function showPack(pid, vid, start) {
+  const url = `/placement/packaging/${pid}/${vid}`;
+  let a = await api(url, start ? { method: "POST" } : undefined);
+  while (a.state === "running") {
+    $("pl-pack-out").innerHTML = `<p class="pl-hint" role="status">Scoring attention… ${a.done_count || 0}/${a.total || "?"} (first run warms up the GPU, up to ~1 min)</p>`;
+    await sleep(2000);
+    if (S.pid !== pid || $("pl-pack-set").value !== vid) return;
+    a = await api(url);
+  }
+  if (a.state === "failed") throw new Error(a.error || "Attention scoring failed.");
+  if (a.state !== "done") { $("pl-pack-out").innerHTML = ""; return; }
+  const R = a.results;
+  $("pl-pack-out").innerHTML = `<article class="pl-rec"><strong>Most attention: ${esc(R.rows.find((r) => r.key === R.best)?.label)}</strong><ul>${R.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></article>
+  <div class="pl-scroll"><table><thead><tr><th>Pack</th><th>Attention share</th><th>Δ vs original</th><th>× original</th><th>Rank among products</th></tr></thead><tbody>
+  ${R.rows.map((r) => `<tr${r.key === R.best ? ' class="pl-best"' : ""}><td>${esc(r.label)}</td><td>${pct(r.saliency_share)}</td><td>${r.key === "original" ? "–" : `${r.delta_pp >= 0 ? "+" : ""}${num(r.delta_pp, 1)} pp`}</td><td>${r.ratio == null ? "–" : `${num(r.ratio, 2)}×`}</td><td>#${r.rank} of ${r.n_products}</td></tr>`).join("")}
+  </tbody></table></div>
+  <div class="pl-multi">${R.rows.map((r) => `<figure class="pl-heat" style="--pl-op:0.8;margin:0"><img src="${esc(`${base()}/${r.image}`)}" alt="${esc(r.label)} on the shelf"><img class="pl-over" src="${esc(`${base()}${url}/${file(r.heatmap)}`)}" alt=""><figcaption class="pl-hint">${esc(r.label)} · ${pct(r.saliency_share)}</figcaption></figure>`).join("")}</div>`;
+}
+
+$("pl-pack-run").onclick = () => showPack(S.pid, $("pl-pack-set").value, true).catch(fail);
+$("pl-pack-set").onchange = () => showPack(S.pid, $("pl-pack-set").value, false).catch(fail);

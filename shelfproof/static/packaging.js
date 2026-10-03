@@ -14,14 +14,20 @@ dialog.setAttribute("aria-labelledby", "lab-title");
 dialog.innerHTML = `
 <div class="lab-head">
   <h2 id="lab-title">Packaging lab</h2>
+  <ol class="lab-progress" aria-label="Packaging workflow"><li data-step="select">1 Select</li><li data-step="brief">2 Brief</li><li data-step="compare">3 Compare</li></ol>
+  <div class="lab-head-actions"><button type="button" id="lab-theme">Toggle theme</button><button type="button" id="lab-close">Back to shelf</button></div>
+</div>
+<div class="lab-toolbar">
+  <details class="lab-products" id="lab-history">
+    <summary id="lab-products-h">Products &amp; history</summary>
+    <div class="lab-history-panel"><h3>Products in this photo</h3><ul id="lab-product-list"></ul><button type="button" id="lab-new">Select a new product</button></div>
+  </details>
   <p id="lab-status" role="status" aria-live="polite"></p>
-  <button type="button" id="lab-close">Close</button>
 </div>
 <div class="lab-body">
-  <section class="lab-products" aria-labelledby="lab-products-h">
-    <h3 id="lab-products-h">Products in this photo</h3>
-    <ul id="lab-product-list"></ul>
-    <button type="button" id="lab-new">New product</button>
+  <section id="lab-context" hidden aria-label="Original shelf context">
+    <div class="lab-canvas-heading"><h3>Original shelf</h3><span class="lab-hint">Your selection stays in context</span></div>
+    <img id="lab-context-photo" alt="Original shelf, retained as context for your packaging brief">
   </section>
   <section id="lab-pick" class="lab-step" aria-labelledby="lab-instr">
     <p id="lab-instr"><strong>Click your product, or drag a box around it.</strong> Keyboard: focus the photo, move the crosshair with arrow keys (Shift for bigger steps), press Enter.</p>
@@ -37,6 +43,8 @@ dialog.innerHTML = `
       <button type="button" id="lab-retry">Try again</button>
     </div>
   </section>
+  <aside class="lab-inspector" aria-label="Selected product and settings">
+  <section id="lab-selection-help"><h3>Select a product</h3><p>Click a pack on the shelf or draw a box around it. Review the highlight before continuing.</p><p class="lab-hint">Already selected one? Open Products &amp; history to return to a brief or previous concepts.</p></section>
   <div id="lab-current" class="lab-current" hidden>
     <img id="lab-cutout" alt="">
     <p id="lab-current-text"></p>
@@ -47,8 +55,8 @@ dialog.innerHTML = `
     <label><span>Product name <span aria-hidden="true">*</span></span><input name="name" required maxlength="80" autocomplete="off"></label>
     <label>Category<input name="category" list="lab-categories" maxlength="60" placeholder="e.g. breakfast cereal"></label>
     <datalist id="lab-categories"><option>breakfast cereal</option><option>snacks</option><option>beverages</option><option>dairy</option><option>confectionery</option><option>household</option><option>personal care</option></datalist>
-    <fieldset>
-      <legend>Extra photos (optional, improves consistency)</legend>
+    <details class="lab-disclosure"><summary>Side &amp; back references (optional)</summary><fieldset>
+      <legend>Extra photos</legend>
       <label>Side photo<input type="file" name="side" accept="image/*"></label>
       <img class="lab-thumb" data-preview="side" alt="Side photo preview" hidden>
       <label>Back photo<input type="file" name="back" accept="image/*"></label>

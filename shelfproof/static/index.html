@@ -3,62 +3,149 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PreShelf</title>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.core.js">
+<script>document.documentElement.dataset.theme = localStorage.getItem("preshelf:theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");</script>
 <style>
+  :root {
+    --bg: #fbfaf8; --surface: #ffffff; --sunken: #efedea; --canvas: #e6e3de;
+    --text: #1d1c1a; --muted: #6a665f; --line: #dedad3; --line-strong: #c9c4bb;
+    --accent: #b8402a; --accent-hover: #9e3421; --accent-soft: #f7e3dd; --accent-text: #ffffff;
+    --focus: #b8402a; --ok-bg: #e6f1e3; --ok-text: #24501d; --ok-line: #b9d4b1;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #161615; --surface: #1e1e1c; --sunken: #262624; --canvas: #0f0f0e;
+    --text: #ecebe8; --muted: #a6a29a; --line: #34332f; --line-strong: #4a4843;
+    --accent: #e0644a; --accent-hover: #ec7a61; --accent-soft: #3a2420; --accent-text: #1a0d0a;
+    --focus: #ef8a73; --ok-bg: #1f2e1b; --ok-text: #cfe8c6; --ok-line: #3d5a35;
+    color-scheme: dark;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100dvh; display: flex; flex-direction: column; font: 14px system-ui, sans-serif; background: #111; color: #eee; }
-  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px; background: #191919; }
-  form, nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  input { max-width: 100%; }
-  button, a { padding: 8px 12px; }
-  button { cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button[aria-pressed="true"] { background: #bce2ff; color: #111; }
-  :focus-visible { outline: 2px solid #8cf; outline-offset: 3px; }
-  a { color: #8cf; }
+  body { margin: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   [hidden] { display: none !important; }
-  #note, #details { flex-basis: 100%; margin: 0; color: #bbb; font-size: 12px; }
-  #status { overflow-wrap: anywhere; }
-  #viewer { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-  #frame { position: relative; overflow: hidden; background: #080808; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  button, .btn { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px;
+    min-height: 34px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; text-decoration: none; }
+  button:hover:not(:disabled), .btn:hover { background: var(--sunken); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn { width: 34px; padding: 0; justify-content: center; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .app-header { display: flex; align-items: center; gap: 24px; height: 52px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  #brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  #brand strong { font-size: 17px; letter-spacing: -0.01em; }
+  #brand strong span { color: var(--accent); }
+  #brand small { color: var(--muted); font-size: 12px; }
+  .app-nav { display: flex; align-self: stretch; gap: 4px; }
+  .app-nav > * { border: 0; border-radius: 0; background: none; min-height: 0; padding: 0 10px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .app-nav > *:hover:not(:disabled) { background: none; color: var(--text); }
+  .app-nav [aria-current="page"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+  .header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+  .workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 10px; }
+  .work-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .work-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .work-title h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 4px; }
+  #details { margin: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .segmented { margin-left: auto; display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; }
+  .segmented button { border: 0; background: none; min-height: 28px; padding: 4px 12px; border-radius: 6px; color: var(--muted); }
+  .segmented button:hover:not(:disabled) { background: none; color: var(--text); }
+  .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--line-strong); }
+
+  #viewer { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; position: relative; }
+  #frame { position: relative; overflow: hidden; }
   canvas, #photo { display: block; width: 100%; height: 100%; }
   #photo { position: absolute; inset: 0; object-fit: contain; }
-  #texture-pill { display: flex; align-items: center; gap: 8px; margin: 0; padding: 3px 3px 3px 12px; border-radius: 999px; background: #20361a; color: #dfffc8; border: 1px solid #4f7d3a; }
-  #texture-pill button { padding: 4px 10px; border-radius: 999px; }
-  #brand { display: flex; flex-direction: column; line-height: 1.15; margin-right: 6px; }
-  #brand strong { font-size: 16px; letter-spacing: 0.01em; }
-  #brand small { color: #999; font-size: 11px; }
+  #texture-pill { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 8px; margin: 0;
+    padding: 3px 3px 3px 12px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-line); font-size: 13px; }
+  #texture-pill button { min-height: 26px; padding: 2px 10px; border-radius: 999px; }
+
+  .tool-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 36px; }
+  .tool-group { display: flex; align-items: center; gap: 4px; }
+  #status { flex: 1; text-align: center; color: var(--muted); overflow-wrap: anywhere; min-width: 180px; }
+  #status.error { color: var(--accent); }
+  .tool-end { display: flex; align-items: center; gap: 6px; }
+  #note { margin: 0; color: var(--muted); font-size: 12px; }
+  @media (max-width: 760px) {
+    .app-header { gap: 12px; padding: 0 12px; overflow-x: auto; }
+    #brand small, .upload-label { display: none; }
+    .workspace { padding: 10px 12px 8px; }
+    .segmented { margin-left: 0; }
+    #status { order: -1; flex-basis: 100%; text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) { button:active:not(:disabled) { transform: none; } }
 </style>
 <link rel="stylesheet" href="/static/packaging.css">
 <link rel="stylesheet" href="/static/placement.css">
-<header>
-  <div id="brand"><strong>PreShelf</strong> <small>Test your pack before it hits the shelf</small></div>
-  <form id="upload"><label for="image">Shelf photo</label><input id="image" type="file" name="image" accept="image/*" required> <button id="make">Make 3D</button></form>
-  <span id="status" role="status">Choose a photo to start.</span>
-  <nav id="modes" aria-label="Comparison view" hidden>
-    <button type="button" data-mode="mesh" aria-pressed="false">Textured 3D</button>
-    <button type="button" data-mode="photo" aria-pressed="false">Original photo</button>
-    <button type="button" data-mode="splat" aria-pressed="false">Original splat</button>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+</svg>
+<header class="app-header">
+  <div id="brand"><strong>Pre<span>Shelf</span></strong><small>Test your pack before it hits the shelf</small></div>
+  <nav class="app-nav" aria-label="Tools">
+    <button type="button" aria-current="page">Shelf</button>
+    <button id="packaging-lab" type="button" hidden>Packaging lab</button>
+    <button id="placement-test" type="button" hidden>Placement test</button>
   </nav>
-  <button id="reset" type="button" hidden>Reset view</button>
-  <button id="flip" type="button" hidden>Flip splat</button>
-  <nav id="orbit" aria-label="Orbit controls" hidden>
-    <button type="button" data-orbit="left" aria-label="Orbit left">Left</button>
-    <button type="button" data-orbit="right" aria-label="Orbit right">Right</button>
-    <button type="button" data-orbit="up" aria-label="Orbit up">Up</button>
-    <button type="button" data-orbit="down" aria-label="Orbit down">Down</button>
-    <button type="button" data-orbit="in" aria-label="Zoom in">+</button>
-    <button type="button" data-orbit="out" aria-label="Zoom out">−</button>
-  </nav>
-  <a id="download" hidden download>Download GLB</a>
-  <button id="packaging-lab" type="button" hidden>Packaging lab</button>
-  <button id="placement-test" type="button" hidden>Placement test</button>
-  <p id="texture-pill" hidden><span id="texture-label" aria-live="polite"></span><span aria-hidden="true">·</span><button type="button" id="texture-reset">Back to original</button></p>
-  <p id="details" hidden></p>
-  <p id="note">Estimated visible surfaces; hidden sides are not reconstructed. Drag to orbit · scroll to zoom · use orbit buttons with keyboard. Images up to 20 MB.</p>
+  <div class="header-actions">
+    <form id="upload">
+      <input id="image" class="sr-only" type="file" name="image" accept="image/*" required tabindex="-1" aria-hidden="true">
+      <button id="make" type="button"><svg class="icon"><use href="#i-upload"/></svg><span class="upload-label">Upload shelf photo</span><span class="sr-only">Upload shelf photo</span></button>
+    </form>
+    <button id="theme" type="button" class="icon-btn" aria-label="Switch to dark theme"><svg class="icon"><use href="#i-moon"/></svg></button>
+  </div>
 </header>
-<main id="viewer" aria-label="Shelf scene viewer">
-  <div id="frame"><img id="photo" alt="Original full-resolution shelf photo" hidden></div>
-</main>
+<div class="workspace">
+  <div class="work-bar">
+    <div class="work-title">
+      <h1 id="shelf-name">Shelf</h1>
+      <span id="sample-tag" class="tag" hidden>Sample</span>
+      <p id="details" hidden></p>
+    </div>
+    <nav id="modes" class="segmented" aria-label="View" hidden>
+      <button type="button" data-mode="mesh" aria-pressed="false">3D shelf</button>
+      <button type="button" data-mode="photo" aria-pressed="false">Photo</button>
+      <button type="button" data-mode="splat" aria-pressed="false">Legacy splat</button>
+    </nav>
+  </div>
+  <main id="viewer" aria-label="Shelf scene viewer">
+    <p id="texture-pill" hidden><span id="texture-label" aria-live="polite"></span><button type="button" id="texture-reset">Back to original</button></p>
+    <div id="frame"><img id="photo" alt="Original full-resolution shelf photo" hidden></div>
+  </main>
+  <div class="tool-bar">
+    <nav id="orbit" class="tool-group" aria-label="Camera" hidden>
+      <button type="button" class="icon-btn" data-orbit="left" aria-label="Orbit left"><svg class="icon"><use href="#i-left"/></svg></button>
+      <button type="button" class="icon-btn" data-orbit="right" aria-label="Orbit right"><svg class="icon"><use href="#i-right"/></svg></button>
+      <button type="button" class="icon-btn" data-orbit="up" aria-label="Orbit up"><svg class="icon"><use href="#i-up"/></svg></button>
+      <button type="button" class="icon-btn" data-orbit="down" aria-label="Orbit down"><svg class="icon"><use href="#i-down"/></svg></button>
+      <button type="button" class="icon-btn" data-orbit="out" aria-label="Zoom out"><svg class="icon"><use href="#i-minus"/></svg></button>
+      <button type="button" class="icon-btn" data-orbit="in" aria-label="Zoom in"><svg class="icon"><use href="#i-plus"/></svg></button>
+    </nav>
+    <span id="status" role="status">Loading…</span>
+    <div class="tool-end">
+      <button id="flip" type="button" hidden>Flip splat</button>
+      <button id="reset" type="button" hidden><svg class="icon"><use href="#i-reset"/></svg>Reset view</button>
+      <a id="download" class="btn" hidden download><svg class="icon"><use href="#i-download"/></svg><span id="download-label">Download GLB</span></a>
+    </div>
+  </div>
+  <p id="note">Visible surfaces are estimated from one photo; hidden sides aren't reconstructed. Drag to orbit, scroll to zoom. Uploads up to 20 MB.</p>
+</div>
 <script type="importmap">
   {
     "imports": {
@@ -95,7 +182,7 @@
   controls.enablePan = false;
   controls.enableDamping = false;
   controls.enabled = false;
-  let currentJob, metadata, mode, object, sparkRenderer, originalMap, swapToken = 0, busy = false;
+  let currentJob, metadata, mode, object, cachedMesh, sparkRenderer, originalMap, swapToken = 0, busy = false;
 
   const render = () => { if (mode !== "photo") renderer.render(scene, camera); };
   controls.addEventListener("change", render);
@@ -233,27 +320,31 @@
   window.shelfproof = Object.assign(window.shelfproof || {}, { showTexture, resetTexture });
   $("texture-reset").onclick = resetTexture;
 
-  function clearView() {
+  function clearView(release = false) {
     renderer.setAnimationLoop(null);
     controls.enabled = false;
     if (object) {
       dropSwap();
       scene.remove(object);
       if (mode === "splat") object.dispose();
-      else disposeMesh(object);
+      else if (object !== cachedMesh) disposeMesh(object);
       object = undefined;
       originalMap = undefined;
     }
+    if (release && cachedMesh) { disposeMesh(cachedMesh); cachedMesh = undefined; }
     if (sparkRenderer) { scene.remove(sparkRenderer); sparkRenderer.dispose(); sparkRenderer = undefined; }
     $("photo").hidden = true;
-    $("photo").removeAttribute("src");
+    if (release) $("photo").removeAttribute("src");
     for (const id of ["reset", "flip", "orbit", "download"]) $(id).hidden = true;
     render();
   }
 
   function reportError(error) {
     $("status").textContent = `${error.message} Try again or choose another photo.`;
+    $("status").classList.add("error");
   }
+  new MutationObserver(() => { if (!$("status").textContent.includes("Try again")) $("status").classList.remove("error"); })
+    .observe($("status"), { childList: true });
   async function json(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Could not load scene (${res.status}).`);
@@ -267,32 +358,40 @@
     clearView();
     mode = nextMode;
     const base = `/api/jobs/${currentJob}`;
-    $("status").textContent = `Loading ${mode === "mesh" ? "textured 3D" : mode === "photo" ? "original photo" : "original splat"}…`;
+    $("status").textContent = `Loading ${mode === "mesh" ? "3D shelf" : mode === "photo" ? "photo" : "legacy splat"}…`;
     for (const button of modeButtons) button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
     resize();
     if (mode === "mesh") {
-      const gltf = await new GLTFLoader().loadAsync(`${base}/mesh.glb`, loadProgress);
-      object = gltf.scene;
-      const oldMaterials = new Set(), unusedTextures = new Set(), keptTextures = new Set();
-      object.traverse((child) => {
-        if (!child.isMesh) return;
-        const unlit = (material) => {
-          oldMaterials.add(material);
-          if (material.map) keptTextures.add(material.map);
-          for (const value of Object.values(material)) if (value?.isTexture) unusedTextures.add(value);
-          return new THREE.MeshBasicMaterial({ map: material.map, side: THREE.DoubleSide, toneMapped: false });
-        };
-        child.material = Array.isArray(child.material) ? child.material.map(unlit) : unlit(child.material);
-      });
-      for (const material of oldMaterials) material.dispose();
-      for (const texture of unusedTextures) if (!keptTextures.has(texture)) texture.dispose();
+      if (!cachedMesh) {
+        const image = $("photo");
+        if (image.getAttribute("src") !== `${base}/source.png` || (image.complete && !image.naturalWidth)) image.src = `${base}/source.png`;
+        image.decode().then(() => { if (mode === "mesh" && !object) image.hidden = false; }).catch(() => {});
+        const gltf = await new GLTFLoader().loadAsync(`${base}/mesh.glb`, loadProgress);
+        object = gltf.scene;
+        const oldMaterials = new Set(), unusedTextures = new Set(), keptTextures = new Set();
+        object.traverse((child) => {
+          if (!child.isMesh) return;
+          const unlit = (material) => {
+            oldMaterials.add(material);
+            if (material.map) keptTextures.add(material.map);
+            for (const value of Object.values(material)) if (value?.isTexture) unusedTextures.add(value);
+            return new THREE.MeshBasicMaterial({ map: material.map, side: THREE.DoubleSide, toneMapped: false });
+          };
+          child.material = Array.isArray(child.material) ? child.material.map(unlit) : unlit(child.material);
+        });
+        for (const material of oldMaterials) material.dispose();
+        for (const texture of unusedTextures) if (!keptTextures.has(texture)) texture.dispose();
+        cachedMesh = object;
+      }
+      object = cachedMesh;
       scene.add(object);
-      originalMap = [...keptTextures][0];
+      originalMap = meshMaterials()[0]?.map;
       resetView();
-      $("status").textContent = `Ready · ${metadata.vertex_count.toLocaleString()} vertices · ${metadata.triangle_count.toLocaleString()} triangles`;
+      $("photo").hidden = true;
+      $("status").textContent = "Drag to orbit · scroll to zoom";
     } else if (mode === "photo") {
       const image = $("photo");
-      image.src = `${base}/source.png`;
+      if (image.getAttribute("src") !== `${base}/source.png` || (image.complete && !image.naturalWidth)) image.src = `${base}/source.png`;
       await image.decode();
       image.hidden = false;
       $("status").textContent = "Original photo · full resolution";
@@ -314,7 +413,7 @@
     $("download").hidden = false;
     const downloadMesh = mode !== "splat" && metadata;
     $("download").href = `${base}/${downloadMesh ? "mesh.glb" : "scene.ply"}`;
-    $("download").textContent = downloadMesh ? "Download GLB" : "Download PLY";
+    $("download-label").textContent = downloadMesh ? "Download GLB" : "Download PLY";
     $("download").download = `${currentJob}.${downloadMesh ? "glb" : "ply"}`;
     render();
   }
@@ -331,7 +430,8 @@
   async function poll(jobId) {
     if (!/^[0-9a-f]{12}$/.test(jobId)) throw new Error("Invalid job link.");
     history.replaceState(null, "", `?job=${jobId}`);
-    clearView();
+    swapToken++;
+    clearView(true);
     metadata = undefined;
     mode = undefined;
     $("modes").hidden = $("details").hidden = true;
@@ -340,12 +440,16 @@
       const job = await json(`/api/jobs/${jobId}`);
       if (job.state === "done") {
         currentJob = jobId;
-        if (job.representation === "textured-mesh") metadata = validateMetadata(await json(`/api/jobs/${jobId}/scene.json`));
+        if (job.representation === "textured-mesh") metadata = validateMetadata(job.metadata || await json(`/api/jobs/${jobId}/scene.json`));
         $("modes").hidden = false;
         $("details").hidden = false;
+        const sample = jobId === SAMPLE_JOB;
+        $("shelf-name").textContent = sample ? "Tesco Easter aisle" : "Your shelf";
+        $("sample-tag").hidden = !sample;
         $("details").textContent = metadata
-          ? `Photo ${metadata.source_size.join(" × ")} px · Geometry ${metadata.geometry_size.join(" × ")} px · ${metadata.model}`
-          : "Legacy scene · depth-anything/Depth-Anything-V2-Small-hf · Original photo / textured mesh unavailable for this job.";
+          ? `${metadata.source_size.join(" × ")} px photo · ${(metadata.triangle_count / 1e6).toFixed(1)}M-triangle mesh`
+          : "Legacy scene · photo and 3D mesh unavailable for this job";
+        $("details").title = metadata ? `Geometry ${metadata.geometry_size.join(" × ")} px · ${metadata.model}` : "";
         return show(metadata ? "mesh" : "splat");
       }
       if (job.state === "failed") throw new Error(job.error || "Reconstruction failed.");
@@ -354,6 +458,21 @@
     }
   }
 
+  const SAMPLE_JOB = "38c17fd769fe";
+  $("make").onclick = () => $("image").click();
+  $("image").addEventListener("change", () => { if ($("image").files[0]) $("upload").requestSubmit(); });
+  function syncTheme() {
+    const dark = document.documentElement.dataset.theme === "dark";
+    $("theme").setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} theme`);
+    $("theme").querySelector("use").setAttribute("href", dark ? "#i-sun" : "#i-moon");
+  }
+  $("theme").onclick = () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("preshelf:theme", next);
+    syncTheme();
+  };
+  syncTheme();
   $("upload").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (busy) return;
@@ -369,7 +488,7 @@
     finally { setBusy(false); }
   });
   for (const button of modeButtons) button.onclick = async () => {
-    if (busy || !currentJob) return;
+    if (busy || !currentJob || (button.dataset.mode === mode && (mode === "photo" || object))) return;
     setBusy(true);
     try { await show(button.dataset.mode); }
     catch (error) { clearView(); reportError(error); }
