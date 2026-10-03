@@ -320,6 +320,7 @@ async function selectProduct(pid, rid) {
   const token = ++S.token;
   setRunning(false);
   S.pid = pid; S.rid = null; S.cand = null; S.slots = []; S.R = null;
+  pack.hidden = true;
   showView(false);
   try { localStorage.setItem(storeKey(), pid); } catch { /* storage unavailable */ }
   writeHash();
@@ -463,7 +464,11 @@ $("pl-v-3d").onclick = () => {
 async function open([pid, rid] = []) {
   if (!job() || !/^[0-9a-f]{12}$/.test(job())) return;
   if (!dialog.open) dialog.showModal();
-  if (S.job !== job()) Object.assign(S, { job: job(), layout: null, meta: null, pid: null, rid: null, costs: {} });
+  if (S.job !== job()) {
+    Object.assign(S, { job: job(), layout: null, meta: null, pid: null, rid: null, costs: {}, R: null, cand: null });
+    showView(false);
+  }
+  renderHistory();
   const token = ++S.token;
   status("Loading…", { busy: true });
   const src = `${base()}/source.png`;
@@ -513,19 +518,20 @@ const pack = document.createElement("section");
 pack.id = "pl-pack";
 pack.hidden = true;
 pack.setAttribute("aria-labelledby", "pl-pack-h");
-pack.innerHTML = `<h3 id="pl-pack-h">Pack design attention</h3>
+pack.innerHTML = `<details><summary id="pl-pack-h">Pack design attention</summary>
 <p class="pl-hint">Scores the original pack and each Packaging-lab concept with DeepGaze IIE in the same photo, viewpoint and shelf position, so differences come from the design. ${DISCLAIMER}</p>
 <div class="pl-row"><label>Concept set<select id="pl-pack-set"></select></label><button type="button" id="pl-pack-run">Score pack attention</button></div>
-<div id="pl-pack-out"></div>`;
-$("pl-setup").after(pack);
+<div id="pl-pack-out"></div></details>`;
+$("pl-results").after(pack);
 
 async function loadPackSets(pid) {
   const sets = (await api(`/placement/packaging/${pid}`)).filter((v) => v.files?.length);
+  if (S.pid !== pid) return;
   pack.hidden = false;
   $("pl-pack-set").innerHTML = sets.map((v) => `<option value="${esc(v.vid)}">${esc(v.brief?.price_tier || "")} ${esc(v.brief?.brand_tone || "")} · ${v.files.length} concepts · ${esc(v.vid)}</option>`).join("");
   $("pl-pack-run").disabled = !sets.length;
   $("pl-pack-out").innerHTML = sets.length ? "" : `<p class="pl-hint">No concepts yet for this product. Generate some in the Packaging lab first.</p>`;
-  if (sets.length) showPack(pid, sets[0].vid, false);
+  if (sets.length) await showPack(pid, sets[0].vid, false);
 }
 
 async function showPack(pid, vid, start) {
@@ -537,8 +543,9 @@ async function showPack(pid, vid, start) {
     if (S.pid !== pid || $("pl-pack-set").value !== vid) return;
     a = await api(url);
   }
+  if (S.pid !== pid || $("pl-pack-set").value !== vid) return;
   if (a.state === "failed") throw new Error(a.error || "Attention scoring failed.");
-  if (a.state !== "done") { $("pl-pack-out").innerHTML = ""; return; }
+  if (a.state !== "done") { $("pl-pack-out").innerHTML = '<p class="pl-hint">No attention scores yet. Choose “Score pack attention” to evaluate this concept set.</p>'; return; }
   const R = a.results;
   $("pl-pack-out").innerHTML = `<article class="pl-rec"><strong>Most attention: ${esc(R.rows.find((r) => r.key === R.best)?.label)}</strong><ul>${R.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></article>
   <div class="pl-scroll"><table><thead><tr><th>Pack</th><th>Attention share</th><th>Δ vs original</th><th>× original</th><th>Rank among products</th></tr></thead><tbody>

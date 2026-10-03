@@ -62,7 +62,7 @@ dialog.innerHTML = `
       <label>Back photo<input type="file" name="back" accept="image/*"></label>
       <img class="lab-thumb" data-preview="back" alt="Back photo preview" hidden>
       <p class="lab-hint">Images up to 20 MB.</p>
-    </fieldset>
+    </fieldset></details>
     <button>Continue to brief</button>
   </form>
   <form id="lab-brief" class="lab-step" hidden>
@@ -88,30 +88,44 @@ dialog.innerHTML = `
     <label>Notes<textarea name="notes" rows="3" maxlength="1000"></textarea></label>
     <fieldset class="lab-models">
       <legend>Image model</legend>
-      <label class="lab-model"><input type="radio" name="model" value="gpt-image-2.5-sunburst" checked aria-describedby="lab-model-gpt"> <span><strong>GPT-Image-2.5 Sunburst</strong> <span class="lab-hint" id="lab-model-gpt">best text &amp; editing, ~$0.06/image</span></span></label>
+      <label class="lab-model"><input type="radio" name="model" value="gpt-image-2.5-sunburst" checked aria-describedby="lab-model-gpt"> <span><strong>GPT-Image-2.5 Sunburst</strong> <span class="lab-hint" id="lab-model-gpt">Text &amp; image editing</span></span></label>
       <label class="lab-model"><input type="radio" name="model" value="nano-banana-pro" aria-describedby="lab-model-nano"> <span><strong>Nano Banana Pro</strong> <span class="lab-hint" id="lab-model-nano">~$0.14/image</span></span></label>
     </fieldset>
     <label>Number of variants<input type="number" name="count" min="1" max="4" value="2" required></label>
     <p class="lab-hint">Paid generation: each concept uses two image calls (design the pack, then put it on the shelf). Expect about 30–70 s in total.</p>
     <button>Generate concepts</button>
   </form>
-  <section id="lab-results" class="lab-step" hidden aria-labelledby="lab-results-h">
-    <h3 id="lab-results-h">Packaging concepts</h3>
-    <p class="lab-caption">AI-generated concepts. Check label text and claims before use.</p>
+  <section id="lab-concepts" hidden aria-labelledby="lab-concepts-h">
+    <h3 id="lab-concepts-h">Packaging concepts</h3>
     <p id="lab-summary" class="lab-hint" hidden></p>
     <div id="lab-grid" class="lab-grid"></div>
+    <button type="button" id="lab-edit-brief">Edit design brief</button>
+    <p class="lab-caption">AI-generated concepts. Check label text and claims before use.</p>
+  </section>
+  </aside>
+  <section id="lab-results" class="lab-step" hidden aria-labelledby="lab-results-h">
+    <div class="lab-canvas-heading"><h3 id="lab-results-h">Compare packaging</h3>
+      <div class="lab-view-modes" role="group" aria-label="Comparison view">
+        <button type="button" data-compare-mode="wipe" aria-pressed="true">Wipe</button>
+        <button type="button" data-compare-mode="side" aria-pressed="false">Side by side</button>
+        <button type="button" data-compare-mode="pack" aria-pressed="false">Pack only</button>
+      </div>
+    </div>
+    <p id="lab-results-empty" class="lab-empty">Your concepts will appear here as they become available. You can return to the brief without losing your entries.</p>
     <section id="lab-compare" hidden aria-labelledby="lab-compare-h">
       <h4 id="lab-compare-h">Compare</h4>
-      <div class="lab-side">
+      <div class="lab-side" id="lab-side" hidden>
         <figure><img id="lab-cmp-a" alt="Original shelf"><figcaption>Original shelf</figcaption></figure>
         <figure><img id="lab-cmp-b" alt=""><figcaption id="lab-cmp-b-cap"></figcaption></figure>
       </div>
       <div class="lab-slider" id="lab-slider">
         <img id="lab-sl-b" alt="">
         <img id="lab-sl-a" class="lab-top" alt="Original shelf (before)">
+        <span class="lab-before-label">Original</span><span class="lab-after-label" id="lab-after-label">Concept</span>
         <div class="lab-handle" aria-hidden="true"></div>
       </div>
-      <label>Before / after (left: original, right: concept)<input type="range" id="lab-range" min="0" max="100" value="50"></label>
+      <label id="lab-range-label">Drag to compare · left: original / right: concept<input type="range" id="lab-range" min="0" max="100" value="50" aria-label="Original shelf reveal percentage"></label>
+      <figure id="lab-pack-view" hidden><img id="lab-pack-image" alt=""><figcaption id="lab-pack-caption"></figcaption></figure>
     </section>
   </section>
 </div>`;
