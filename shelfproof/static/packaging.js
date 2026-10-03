@@ -540,6 +540,17 @@ function setCompareMode(mode) {
 }
 for (const btn of dialog.querySelectorAll("[data-compare-mode]")) btn.onclick = () => setCompareMode(btn.dataset.compareMode);
 $("lab-range").addEventListener("input", (e) => $("lab-slider").style.setProperty("--pos", `${e.target.value}%`));
+function moveWipe(e) {
+  const rect = $("lab-slider").getBoundingClientRect();
+  $("lab-range").value = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
+  $("lab-range").dispatchEvent(new Event("input"));
+}
+$("lab-slider").onpointerdown = (e) => {
+  if (e.button !== 0 || S.pending) return;
+  $("lab-slider").setPointerCapture(e.pointerId);
+  moveWipe(e);
+};
+$("lab-slider").onpointermove = (e) => { if ($("lab-slider").hasPointerCapture(e.pointerId)) moveWipe(e); };
 
 async function loadProducts() {
   const list = await api("/products");
