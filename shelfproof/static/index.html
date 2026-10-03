@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShelfProof</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #111; color: #eee; }
+  header { position: fixed; inset: 0 0 auto 0; display: flex; gap: 12px; align-items: center; padding: 12px; background: #111d; }
+  canvas { display: block; }
+  a { color: #8cf; }
+  #note { position: fixed; top: 48px; left: 12px; margin: 0; color: #999; font-size: 12px; }
+</style>
+<header>
+  <form id="upload"><input type="file" name="image" accept="image/*" required> <button>Make 3D</button></form>
+  <span id="status" role="status"></span>
+  <button id="reset" hidden>Reset view</button>
+  <button id="flip" hidden>Flip</button>
+  <a id="download" hidden download>Download PLY</a>
+</header>
+<p id="note">Depth estimated from one photo. Hidden sides are not shown.</p>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+      "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.3.1/spark.module.js"
+    }
+  }
+</script>
+<script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+  import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+
+  const $ = (id) => document.getElementById(id);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 100);
+  const renderer = new THREE.WebGLRenderer();
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+  scene.add(new SparkRenderer({ renderer }));
+  const controls = new OrbitControls(camera, renderer.domElement);
+  const resetView = () => { camera.position.set(0, 0, 2.5); controls.target.set(0, 0, 0); controls.update(); };
+  resetView();
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+  let splat;
+  function show(jobId) {
+    const url = `/api/jobs/${jobId}/scene.ply`;
+    if (splat) scene.remove(splat);
+    splat = new SplatMesh({ url });
+    scene.add(splat);
+    $("download").href = url;
+    for (const id of ["reset", "flip", "download"]) $(id).hidden = false;
+    resetView();
+  }
+
+  async function poll(jobId) {
+    history.replaceState(null, "", `?job=${jobId}`);
+    for (;;) {
+      const res = await fetch(`/api/jobs/${jobId}`);
+      if (!res.ok) { $("status").textContent = `Unknown job ${jobId}`; return; }
+      const job = await res.json();
+      if (job.state === "done") { $("status").textContent = `Job ${jobId}`; return show(jobId); }
+      if (job.state === "failed") { $("status").textContent = job.error; return; }
+      $("status").textContent = "Building 3D from photo…";
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+
+  $("upload").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("status").textContent = "Uploading…";
+    const res = await fetch("/api/jobs", { method: "POST", body: new FormData(e.target) });
+    if (!res.ok) { $("status").textContent = `Upload failed (${res.status})`; return; }
+    poll((await res.json()).job_id);
+  });
+  $("reset").onclick = resetView;
+  $("flip").onclick = () => splat?.rotateX(Math.PI);
+
+  const initial = new URLSearchParams(location.search).get("job");
+  if (initial) poll(initial);
+</script>
+</html>

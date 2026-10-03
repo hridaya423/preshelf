@@ -1,5 +1,9 @@
 # ShelfProof Phase 1 Implementation Plan: shelf video to navigable 3D
 
+> **Pivoted 2026-10-03: input is a single photo; Nerfstudio/video path removed.**
+
+**New architecture:** the Modal GPU worker runs Depth-Anything-V2-Small on one uploaded photo and `shelfproof/splat.py` unprojects the pixels into a one-Gaussian-per-pixel PLY; the web endpoint and Spark viewer are unchanged.
+
 > **For the executor:** use the `executing-plans` skill and work through the tasks in order. Tasks 1 and 2 are gates: if one fails, stop and fix it before building anything on top.
 
 **Goal:** Upload a phone video of one shelf bay, reconstruct it on a cloud GPU, and orbit the resulting Gaussian splat in the browser, with reset and download.
