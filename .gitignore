@@ -4,3 +4,5 @@ data/
 __pycache__/
 *.mp4
 *.ply
+.env
+.pytest_cache/

@@ -1,4 +1,4 @@
-# ShelfProof research and phase boundaries
+# PreShelf research and phase boundaries
 
 Research checked 3 October 2026. This document separates verified capabilities from proposed implementation choices. No reconstruction, model training, or deployment has been performed.
 

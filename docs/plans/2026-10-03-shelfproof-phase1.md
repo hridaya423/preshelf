@@ -1,4 +1,4 @@
-# ShelfProof Phase 1 Implementation Plan: shelf video to navigable 3D
+# PreShelf Phase 1 Implementation Plan: shelf video to navigable 3D
 
 > **Pivoted 2026-10-03: input is a single photo; Nerfstudio/video path removed.**
 

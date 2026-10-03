@@ -12,6 +12,10 @@ PLY_DTYPE = [
 
 def image_to_splat_ply(rgb: np.ndarray, disparity: np.ndarray) -> bytes:
     H, W, _ = rgb.shape
+    if min(H, W) < 2:
+        raise ValueError("Image dimensions must be at least 2 pixels.")
+    if disparity.shape != (H, W) or not np.isfinite(disparity).all():
+        raise ValueError("Depth must match the image dimensions and contain finite values.")
     d = (disparity - disparity.min()) / (disparity.max() - disparity.min() + 1e-8)
     z = 1.0 + 0.4 * (1.0 - d)
 

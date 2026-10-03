@@ -2,22 +2,63 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ShelfProof</title>
+<title>PreShelf</title>
 <style>
-  body { margin: 0; font: 14px system-ui, sans-serif; background: #111; color: #eee; }
-  header { position: fixed; inset: 0 0 auto 0; display: flex; gap: 12px; align-items: center; padding: 12px; background: #111d; }
-  canvas { display: block; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100dvh; display: flex; flex-direction: column; font: 14px system-ui, sans-serif; background: #111; color: #eee; }
+  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px; background: #191919; }
+  form, nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  input { max-width: 100%; }
+  button, a { padding: 8px 12px; }
+  button { cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button[aria-pressed="true"] { background: #bce2ff; color: #111; }
+  :focus-visible { outline: 2px solid #8cf; outline-offset: 3px; }
   a { color: #8cf; }
-  #note { position: fixed; top: 48px; left: 12px; margin: 0; color: #999; font-size: 12px; }
+  [hidden] { display: none !important; }
+  #note, #details { flex-basis: 100%; margin: 0; color: #bbb; font-size: 12px; }
+  #status { overflow-wrap: anywhere; }
+  #viewer { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+  #frame { position: relative; overflow: hidden; background: #080808; }
+  canvas, #photo { display: block; width: 100%; height: 100%; }
+  #photo { position: absolute; inset: 0; object-fit: contain; }
+  #texture-pill { display: flex; align-items: center; gap: 8px; margin: 0; padding: 3px 3px 3px 12px; border-radius: 999px; background: #20361a; color: #dfffc8; border: 1px solid #4f7d3a; }
+  #texture-pill button { padding: 4px 10px; border-radius: 999px; }
+  #brand { display: flex; flex-direction: column; line-height: 1.15; margin-right: 6px; }
+  #brand strong { font-size: 16px; letter-spacing: 0.01em; }
+  #brand small { color: #999; font-size: 11px; }
 </style>
+<link rel="stylesheet" href="/static/packaging.css">
+<link rel="stylesheet" href="/static/placement.css">
 <header>
-  <form id="upload"><input type="file" name="image" accept="image/*" required> <button>Make 3D</button></form>
-  <span id="status" role="status"></span>
-  <button id="reset" hidden>Reset view</button>
-  <button id="flip" hidden>Flip</button>
-  <a id="download" hidden download>Download PLY</a>
+  <div id="brand"><strong>PreShelf</strong> <small>Test your pack before it hits the shelf</small></div>
+  <form id="upload"><label for="image">Shelf photo</label><input id="image" type="file" name="image" accept="image/*" required> <button id="make">Make 3D</button></form>
+  <span id="status" role="status">Choose a photo to start.</span>
+  <nav id="modes" aria-label="Comparison view" hidden>
+    <button type="button" data-mode="mesh" aria-pressed="false">Textured 3D</button>
+    <button type="button" data-mode="photo" aria-pressed="false">Original photo</button>
+    <button type="button" data-mode="splat" aria-pressed="false">Original splat</button>
+  </nav>
+  <button id="reset" type="button" hidden>Reset view</button>
+  <button id="flip" type="button" hidden>Flip splat</button>
+  <nav id="orbit" aria-label="Orbit controls" hidden>
+    <button type="button" data-orbit="left" aria-label="Orbit left">Left</button>
+    <button type="button" data-orbit="right" aria-label="Orbit right">Right</button>
+    <button type="button" data-orbit="up" aria-label="Orbit up">Up</button>
+    <button type="button" data-orbit="down" aria-label="Orbit down">Down</button>
+    <button type="button" data-orbit="in" aria-label="Zoom in">+</button>
+    <button type="button" data-orbit="out" aria-label="Zoom out">−</button>
+  </nav>
+  <a id="download" hidden download>Download GLB</a>
+  <button id="packaging-lab" type="button" hidden>Packaging lab</button>
+  <button id="placement-test" type="button" hidden>Placement test</button>
+  <p id="texture-pill" hidden><span id="texture-label" aria-live="polite"></span><span aria-hidden="true">·</span><button type="button" id="texture-reset">Back to original</button></p>
+  <p id="details" hidden></p>
+  <p id="note">Estimated visible surfaces; hidden sides are not reconstructed. Drag to orbit · scroll to zoom · use orbit buttons with keyboard. Images up to 20 MB.</p>
 </header>
-<p id="note">Depth estimated from one photo. Hidden sides are not shown.</p>
+<main id="viewer" aria-label="Shelf scene viewer">
+  <div id="frame"><img id="photo" alt="Original full-resolution shelf photo" hidden></div>
+</main>
 <script type="importmap">
   {
     "imports": {
@@ -27,63 +68,338 @@
     }
   }
 </script>
+<script type="module" src="/static/packaging.js"></script>
+<script type="module" src="/static/placement.js"></script>
 <script type="module">
   import * as THREE from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+  import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
   const $ = (id) => document.getElementById(id);
+  const modeButtons = [...document.querySelectorAll("[data-mode]")];
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 100);
-  const renderer = new THREE.WebGLRenderer();
-  renderer.setSize(innerWidth, innerHeight);
-  document.body.appendChild(renderer.domElement);
-  scene.add(new SparkRenderer({ renderer }));
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 100);
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+  } catch {
+    $("status").textContent = "3D needs WebGL2. Try a browser with hardware acceleration enabled.";
+    $("make").disabled = true;
+    throw new Error("WebGL2 unavailable");
+  }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  $("frame").appendChild(renderer.domElement);
   const controls = new OrbitControls(camera, renderer.domElement);
-  const resetView = () => { camera.position.set(0, 0, 2.5); controls.target.set(0, 0, 0); controls.update(); };
-  resetView();
-  addEventListener("resize", () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
-  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  controls.enablePan = false;
+  controls.enableDamping = false;
+  controls.enabled = false;
+  let currentJob, metadata, mode, object, sparkRenderer, originalMap, swapToken = 0, busy = false;
 
-  let splat;
-  function show(jobId) {
-    const url = `/api/jobs/${jobId}/scene.ply`;
-    if (splat) scene.remove(splat);
-    splat = new SplatMesh({ url });
-    scene.add(splat);
-    $("download").href = url;
-    for (const id of ["reset", "flip", "download"]) $(id).hidden = false;
-    resetView();
+  const render = () => { if (mode !== "photo") renderer.render(scene, camera); };
+  controls.addEventListener("change", render);
+  function setBusy(value) {
+    busy = value;
+    $("make").disabled = value;
+    for (const button of modeButtons) button.disabled = value || (button.dataset.mode !== "splat" && !metadata);
+    for (const id of ["reset", "flip"]) $(id).disabled = value;
+    for (const button of document.querySelectorAll("[data-orbit]")) button.disabled = value;
+    controls.enabled = !value && !!object && mode !== "photo";
+  }
+
+  function sourceProjection() {
+    const [[fx, , cx], [, fy, cy]] = metadata.intrinsics;
+    const n = camera.near;
+    camera.projectionMatrix.makePerspective(-cx / fx * n, (1 - cx) / fx * n, cy / fy * n, -(1 - cy) / fy * n, n, camera.far);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  }
+
+  function resize() {
+    const { width, height } = $("viewer").getBoundingClientRect();
+    if (!width || !height) return;
+    const aspect = metadata ? metadata.source_size[0] / metadata.source_size[1] : width / height;
+    const w = Math.min(width, height * aspect), h = w / aspect;
+    $("frame").style.width = `${w}px`;
+    $("frame").style.height = `${h}px`;
+    renderer.setSize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)), false);
+    camera.aspect = aspect;
+    if (metadata && mode === "mesh") sourceProjection();
+    else camera.updateProjectionMatrix();
+    render();
+  }
+  new ResizeObserver(resize).observe($("viewer"));
+
+  function resetView() {
+    camera.up.set(0, 1, 0);
+    if (mode === "mesh") {
+      const z = metadata.camera.target[2], distance = -z;
+      camera.near = Math.max(0.0001, distance * 0.001);
+      camera.far = Math.max(100, distance * 100);
+      camera.position.set(0, 0, 0);
+      camera.quaternion.identity();
+      controls.target.set(0, 0, z);
+      controls.minDistance = distance * 0.25;
+      controls.maxDistance = distance * 3;
+      controls.minAzimuthAngle = -Math.PI / 3;
+      controls.maxAzimuthAngle = Math.PI / 3;
+      controls.minPolarAngle = Math.PI / 6;
+      controls.maxPolarAngle = 5 * Math.PI / 6;
+    } else {
+      camera.near = 0.01;
+      camera.far = 100;
+      camera.position.set(0, 0, Math.max(1.8, 1.5 / camera.aspect));
+      controls.target.set(0, 0, 0);
+      controls.minDistance = 0.1;
+      controls.maxDistance = 20;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+    }
+    controls.update();
+    resize();
+  }
+
+  function disposeMesh(root) {
+    const geometries = new Set(), materials = new Set(), textures = new Set();
+    root.traverse((child) => {
+      if (child.geometry) geometries.add(child.geometry);
+      for (const material of Array.isArray(child.material) ? child.material : child.material ? [child.material] : []) {
+        materials.add(material);
+        for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+      }
+    });
+    for (const texture of textures) texture.dispose();
+    for (const material of materials) material.dispose();
+    for (const geometry of geometries) geometry.dispose();
+  }
+
+  function meshMaterials() {
+    const out = [];
+    if (mode === "mesh") object?.traverse((child) => { if (child.isMesh) out.push(...[child.material].flat()); });
+    return out.filter((material) => material.map);
+  }
+  function setMap(map) {
+    for (const material of meshMaterials()) { material.map = map; material.needsUpdate = true; }
+  }
+  function dropSwap() {
+    const current = meshMaterials()[0]?.map;
+    if (originalMap && current && current !== originalMap) { setMap(originalMap); current.dispose(); }
+    $("texture-pill").hidden = true;
+  }
+  function resetTexture() {
+    swapToken++;
+    const swapped = !$("texture-pill").hidden;
+    dropSwap();
+    render();
+    if (swapped && metadata && mode === "mesh") $("status").textContent = "Original shelf";
+  }
+  async function showTexture(url, label = "Concept") {
+    const token = ++swapToken;
+    try {
+      while (busy) await new Promise((r) => setTimeout(r, 100));
+      if (token !== swapToken) return false;
+      if (!currentJob || !metadata) throw new Error("Textured 3D is not available for this job.");
+      if (mode !== "mesh") {
+        setBusy(true);
+        try { await show("mesh"); } finally { setBusy(false); }
+      }
+      if (token !== swapToken) return false;
+      const target = object;
+      $("status").textContent = `Loading ${label}…`;
+      const texture = await new THREE.TextureLoader().loadAsync(url);
+      if (token !== swapToken || object !== target || !originalMap) { texture.dispose(); return false; }
+      const a = originalMap.image, b = texture.image;
+      if (a?.width && Math.abs(b.width / b.height - a.width / a.height) > 0.01) {
+        texture.dispose();
+        throw new Error(`${label} is ${b.width} × ${b.height} px but the shelf photo is ${a.width} × ${a.height} px, so it cannot be mapped onto the 3D shelf.`);
+      }
+      for (const key of ["flipY", "wrapS", "wrapT", "magFilter", "minFilter", "anisotropy", "channel", "generateMipmaps"]) texture[key] = originalMap[key];
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      dropSwap();
+      setMap(texture);
+      $("texture-label").textContent = `Showing: ${label}`;
+      $("texture-pill").hidden = false;
+      $("status").textContent = `${label} · drag to orbit`;
+      render();
+      return true;
+    } catch (error) {
+      if (token === swapToken) reportError(error);
+      return false;
+    }
+  }
+  window.shelfproof = Object.assign(window.shelfproof || {}, { showTexture, resetTexture });
+  $("texture-reset").onclick = resetTexture;
+
+  function clearView() {
+    renderer.setAnimationLoop(null);
+    controls.enabled = false;
+    if (object) {
+      dropSwap();
+      scene.remove(object);
+      if (mode === "splat") object.dispose();
+      else disposeMesh(object);
+      object = undefined;
+      originalMap = undefined;
+    }
+    if (sparkRenderer) { scene.remove(sparkRenderer); sparkRenderer.dispose(); sparkRenderer = undefined; }
+    $("photo").hidden = true;
+    $("photo").removeAttribute("src");
+    for (const id of ["reset", "flip", "orbit", "download"]) $(id).hidden = true;
+    render();
+  }
+
+  function reportError(error) {
+    $("status").textContent = `${error.message} Try again or choose another photo.`;
+  }
+  async function json(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Could not load scene (${res.status}).`);
+    return res.json();
+  }
+  function loadProgress(event) {
+    if (event.lengthComputable) $("status").textContent = `Loading view… ${Math.round(event.loaded / event.total * 100)}%`;
+  }
+
+  async function show(nextMode) {
+    clearView();
+    mode = nextMode;
+    const base = `/api/jobs/${currentJob}`;
+    $("status").textContent = `Loading ${mode === "mesh" ? "textured 3D" : mode === "photo" ? "original photo" : "original splat"}…`;
+    for (const button of modeButtons) button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
+    resize();
+    if (mode === "mesh") {
+      const gltf = await new GLTFLoader().loadAsync(`${base}/mesh.glb`, loadProgress);
+      object = gltf.scene;
+      const oldMaterials = new Set(), unusedTextures = new Set(), keptTextures = new Set();
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+        const unlit = (material) => {
+          oldMaterials.add(material);
+          if (material.map) keptTextures.add(material.map);
+          for (const value of Object.values(material)) if (value?.isTexture) unusedTextures.add(value);
+          return new THREE.MeshBasicMaterial({ map: material.map, side: THREE.DoubleSide, toneMapped: false });
+        };
+        child.material = Array.isArray(child.material) ? child.material.map(unlit) : unlit(child.material);
+      });
+      for (const material of oldMaterials) material.dispose();
+      for (const texture of unusedTextures) if (!keptTextures.has(texture)) texture.dispose();
+      scene.add(object);
+      originalMap = [...keptTextures][0];
+      resetView();
+      $("status").textContent = `Ready · ${metadata.vertex_count.toLocaleString()} vertices · ${metadata.triangle_count.toLocaleString()} triangles`;
+    } else if (mode === "photo") {
+      const image = $("photo");
+      image.src = `${base}/source.png`;
+      await image.decode();
+      image.hidden = false;
+      $("status").textContent = "Original photo · full resolution";
+    } else {
+      const { SparkRenderer, SplatMesh, SplatLoader } = await import("@sparkjsdev/spark");
+      sparkRenderer = new SparkRenderer({ renderer });
+      scene.add(sparkRenderer);
+      const packedSplats = await new SplatLoader().loadAsync(`${base}/scene.ply`, loadProgress);
+      object = new SplatMesh({ packedSplats });
+      await object.initialized;
+      scene.add(object);
+      resetView();
+      renderer.setAnimationLoop(render);
+      $("status").textContent = `Legacy depth relief · ${packedSplats.numSplats.toLocaleString()} splats`;
+    }
+    const is3D = mode !== "photo";
+    $("reset").hidden = $("orbit").hidden = !is3D;
+    $("flip").hidden = mode !== "splat";
+    $("download").hidden = false;
+    const downloadMesh = mode !== "splat" && metadata;
+    $("download").href = `${base}/${downloadMesh ? "mesh.glb" : "scene.ply"}`;
+    $("download").textContent = downloadMesh ? "Download GLB" : "Download PLY";
+    $("download").download = `${currentJob}.${downloadMesh ? "glb" : "ply"}`;
+    render();
+  }
+
+  function validateMetadata(data) {
+    const [w, h] = data.source_size || [];
+    const k = data.intrinsics;
+    if (!(w > 0 && h > 0) || !k?.every((row) => row.length === 3 && row.every(Number.isFinite)) || k.length !== 3 || !(k[0][0] > 0 && k[1][1] > 0) || !Number.isFinite(data.camera?.target?.[2]) || !(data.camera.target[2] < 0)) {
+      throw new Error("Invalid source camera metadata.");
+    }
+    return data;
   }
 
   async function poll(jobId) {
+    if (!/^[0-9a-f]{12}$/.test(jobId)) throw new Error("Invalid job link.");
     history.replaceState(null, "", `?job=${jobId}`);
+    clearView();
+    metadata = undefined;
+    mode = undefined;
+    $("modes").hidden = $("details").hidden = true;
+    resize();
     for (;;) {
-      const res = await fetch(`/api/jobs/${jobId}`);
-      if (!res.ok) { $("status").textContent = `Unknown job ${jobId}`; return; }
-      const job = await res.json();
-      if (job.state === "done") { $("status").textContent = `Job ${jobId}`; return show(jobId); }
-      if (job.state === "failed") { $("status").textContent = job.error; return; }
-      $("status").textContent = "Building 3D from photo…";
-      await new Promise((r) => setTimeout(r, 5000));
+      const job = await json(`/api/jobs/${jobId}`);
+      if (job.state === "done") {
+        currentJob = jobId;
+        if (job.representation === "textured-mesh") metadata = validateMetadata(await json(`/api/jobs/${jobId}/scene.json`));
+        $("modes").hidden = false;
+        $("details").hidden = false;
+        $("details").textContent = metadata
+          ? `Photo ${metadata.source_size.join(" × ")} px · Geometry ${metadata.geometry_size.join(" × ")} px · ${metadata.model}`
+          : "Legacy scene · depth-anything/Depth-Anything-V2-Small-hf · Original photo / textured mesh unavailable for this job.";
+        return show(metadata ? "mesh" : "splat");
+      }
+      if (job.state === "failed") throw new Error(job.error || "Reconstruction failed.");
+      $("status").textContent = "Building 3D from photo… Jobs may queue; keep this tab open.";
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 
   $("upload").addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (busy) return;
+    const file = $("image").files[0];
+    if (!file || file.size > 20 * 1024 * 1024) { reportError(new Error("Choose an image no larger than 20 MB.")); return; }
+    setBusy(true);
     $("status").textContent = "Uploading…";
-    const res = await fetch("/api/jobs", { method: "POST", body: new FormData(e.target) });
-    if (!res.ok) { $("status").textContent = `Upload failed (${res.status})`; return; }
-    poll((await res.json()).job_id);
+    try {
+      const res = await fetch("/api/jobs", { method: "POST", body: new FormData(e.target) });
+      if (!res.ok) throw new Error(`Upload failed (${res.status}).`);
+      await poll((await res.json()).job_id);
+    } catch (error) { reportError(error); }
+    finally { setBusy(false); }
   });
+  for (const button of modeButtons) button.onclick = async () => {
+    if (busy || !currentJob) return;
+    setBusy(true);
+    try { await show(button.dataset.mode); }
+    catch (error) { clearView(); reportError(error); }
+    finally { setBusy(false); }
+  };
   $("reset").onclick = resetView;
-  $("flip").onclick = () => splat?.rotateX(Math.PI);
+  $("flip").onclick = () => { object?.rotateX(Math.PI); render(); };
+  for (const button of document.querySelectorAll("[data-orbit]")) button.onclick = () => {
+    if (busy || !object) return;
+    const direction = button.dataset.orbit;
+    const offset = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
+    if (direction === "left") offset.theta -= 0.15;
+    if (direction === "right") offset.theta += 0.15;
+    if (direction === "up") offset.phi -= 0.15;
+    if (direction === "down") offset.phi += 0.15;
+    if (direction === "in") offset.radius *= 0.85;
+    if (direction === "out") offset.radius /= 0.85;
+    offset.theta = THREE.MathUtils.clamp(offset.theta, controls.minAzimuthAngle, controls.maxAzimuthAngle);
+    offset.phi = THREE.MathUtils.clamp(offset.phi, controls.minPolarAngle, controls.maxPolarAngle);
+    offset.radius = THREE.MathUtils.clamp(offset.radius, controls.minDistance, controls.maxDistance);
+    camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(offset));
+    controls.update();
+    render();
+  };
 
+  resize();
   const initial = new URLSearchParams(location.search).get("job");
-  if (initial) poll(initial);
+  if (initial) {
+    setBusy(true);
+    poll(initial).catch((error) => { clearView(); reportError(error); }).finally(() => setBusy(false));
+  }
 </script>
 </html>
