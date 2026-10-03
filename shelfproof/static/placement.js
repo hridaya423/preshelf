@@ -44,6 +44,8 @@ dialog.innerHTML = `
     </section>
     <aside class="pl-inspector" aria-label="Placement settings">
       <div class="pl-section-head"><h3>Test settings</h3><button id="pl-run" type="submit">Run placement test</button></div>
+      <label>Packaging to position<select id="pl-design"><option value="">Original pack</option></select></label>
+      <p class="pl-hint">Choose a Packaging-lab concept, then compare its shelf positions. The current-position baseline uses the same design.</p>
       <details open class="pl-settings"><summary>Slots & optional costs</summary>
         <p class="pl-hint">Tick slots to include. The current position stays as your baseline.</p>
         <ol id="pl-slot-list"></ol>
@@ -342,7 +344,8 @@ async function selectProduct(pid, rid) {
     $("pl-mask").style.setProperty("--mask", `url("${base()}/products/${pid}/mask.png")`);
     $("pl-mask").hidden = false;
     renderSlots();
-    loadPackSets(pid).catch(fail);
+    await loadPackSets(pid);
+    if (token !== S.token) return;
     status("Pick slots and personas, then run the test.");
     if (rid && PID.test(rid)) await watchRun(rid, token);
   } catch (e) { if (token === S.token) fail(e); }
@@ -360,7 +363,9 @@ $("pl-setup").addEventListener("submit", async (e) => {
   const token = ++S.token;
   status("Starting run…", { busy: true });
   try {
-    const { run_id } = await api("/placement/runs", postJSON({ pid: S.pid, slots, personas, assumptions }));
+    const [vid, concept] = $("pl-design").value.split(":");
+    const packaging = vid ? { vid, concept: Number(concept) } : null;
+    const { run_id } = await api("/placement/runs", postJSON({ pid: S.pid, slots, personas, assumptions, packaging }));
     await watchRun(run_id, token);
   } catch (err) { if (token === S.token) fail(err); }
 });
@@ -396,6 +401,7 @@ function renderResults(R, preserveSelection = false) {
   S.R = R;
   if (!preserveSelection) S.sel = { slot: R.recommendation?.slot ?? R.ranking[0], p: 0, sal: false };
   $("pl-r-assumptions").innerHTML = Object.entries(S.request?.assumptions || {}).map(([k, v]) => `<dt>${esc(ASSUME[k] || k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("pl-results-h").textContent = R.packaging ? `Concept ${R.packaging.concept} · ${R.packaging.vid} · attention heatmap` : "Original pack · attention heatmap";
   $("pl-r-formula").innerHTML = `<strong>${esc(R.disclaimer || DISCLAIMER)}</strong>${R.formula ? ` Score: <code>${esc(R.formula)}</code>` : ""}`;
   const best = R.slots[R.recommendation?.slot];
   $("pl-rec").innerHTML = best ? `<h4>Recommended slot: ${esc(best.label)}</h4><ul>${(R.recommendation.reasons || []).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : "<p>No recommendation returned.</p>";
@@ -528,6 +534,12 @@ async function loadPackSets(pid) {
   const sets = (await api(`/placement/packaging/${pid}`)).filter((v) => v.files?.length);
   if (S.pid !== pid) return;
   pack.hidden = false;
+  const selected = $("pl-design").value;
+  $("pl-design").innerHTML = '<option value="">Original pack</option>' + sets.map((v) => v.files.map((f) => {
+    const k = /^shelf_([1-4])\.png$/.exec(f)?.[1];
+    return k ? `<option value="${esc(v.vid)}:${k}">Concept ${k} · ${esc(v.brief?.brand_tone || v.brief?.price_tier || "Packaging lab")} · ${esc(v.vid)}</option>` : "";
+  }).join("")).join("");
+  if ([...$("pl-design").options].some((o) => o.value === selected)) $("pl-design").value = selected;
   $("pl-pack-set").innerHTML = sets.map((v) => `<option value="${esc(v.vid)}">${esc(v.brief?.price_tier || "")} ${esc(v.brief?.brand_tone || "")} · ${v.files.length} concepts · ${esc(v.vid)}</option>`).join("");
   $("pl-pack-run").disabled = !sets.length;
   $("pl-pack-out").innerHTML = sets.length ? "" : `<p class="pl-hint">No concepts yet for this product. Generate some in the Packaging lab first.</p>`;

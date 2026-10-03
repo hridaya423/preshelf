@@ -154,6 +154,23 @@ def test_execute_run_end_to_end(tmp_path):
     assert json.loads((run / "status.json").read_text())["state"] == "done"
     assert all((run / f"heat_{i}_{p}.png").is_file() for i in range(3) for p in range(3))
     assert res["recommendation"]["slot"] == res["ranking"][0] and res["slots"][0]["per_persona"][2]["rank"] >= 1
+    variant = job / "products" / "8e2750fd" / "variants" / "11112222"
+    variant.mkdir(parents=True)
+    redesigned = src.copy()
+    redesigned[mask] = (255, 120, 0)
+    redesigned[0, 0] = 255
+    Image.fromarray(redesigned).save(variant / "shelf_1.png")
+    request = json.loads((run / "request.json").read_text())
+    request["packaging"] = {"vid": "11112222", "concept": 1}
+    (run / "request.json").write_text(json.dumps(request))
+    res = execute_run(job, "0123abcd", lambda c: (flat for _ in c))
+    current = np.asarray(Image.open(run / "scene_0.png"))
+    moved = np.asarray(Image.open(run / "scene_1.png"))
+    assert tuple(current[205, 110]) == (255, 120, 0)
+    assert np.array_equal(current[~mask], src[~mask])
+    assert tuple(moved[125, 110]) == (255, 120, 0)
+    assert tuple(moved[205, 110]) == tuple(src[125, 110])
+    assert res["packaging"] == request["packaging"]
 
 
 def test_stacked_and_short_items_join_the_shelf_they_sit_on():

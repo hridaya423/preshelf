@@ -23,7 +23,9 @@ GET  /api/jobs/{job}/placement/personas
                    "photo_distance_m": camera distance the photo was taken from}
 POST /api/jobs/{job}/placement/runs
     JSON {"pid", "slots": [Slot] (1-8; the "current" slot is added if missing), "personas": [Persona] (1-6),
-          "assumptions": Assumptions?} -> {"run_id"}
+          "assumptions": Assumptions?, "packaging": {"vid": 8 hex, "concept": 1-4}|null?} -> {"run_id"}
+    packaging defaults to the original; a concept uses its shelf image inside the original product mask only.
+    Results.packaging records the selected design. Current-position baseline uses that same design.
     Renders one scene per slot, then fans out DeepGaze IIE over slots x personas on GPU.
 GET  /api/jobs/{job}/placement/runs/{rid}
     -> {"run_id", "state": "running"|"done"|"failed", "stage": str, "done_count", "total", "error": str|null,
@@ -166,6 +168,10 @@ def register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, 
                      if isinstance(s, dict) else pl.make_slot(ctx, None) for s in raw_slots]
             people = [pl.validate_persona(p) for p in raw_personas]
             assumptions = pl.validate_assumptions(body.get("assumptions"))
+            packaging = body.get("packaging")
+            pl.packaging_path(job_dir(job_id), pid, packaging)
+            if packaging is not None:
+                packaging = {"vid": packaging["vid"], "concept": packaging["concept"]}
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         labels = {s["id"]: s.get("label") for s in raw_slots if isinstance(s, dict) and isinstance(s.get("label"), str)}
@@ -182,7 +188,7 @@ def register_placement_routes(api, jobs, job_dir, detect_layout, run_placement, 
         run = job_dir(job_id) / "placement" / "runs" / rid
         run.mkdir(parents=True)
         request = {"pid": pid, "slots": list(unique.values()), "personas": people, "assumptions": assumptions,
-                   "created": time.time(), "model": model_info or {}}
+                   "created": time.time(), "model": model_info or {}, "packaging": packaging}
         (run / "request.json").write_text(json.dumps(request))
         total = len(unique) * len(people)
         (run / "status.json").write_text(json.dumps({"state": "running", "stage": "queued", "done_count": 0,

@@ -89,11 +89,12 @@ dialog.innerHTML = `
     <fieldset class="lab-models">
       <legend>Image model</legend>
       <label class="lab-model"><input type="radio" name="model" value="gpt-image-2.5-sunburst" checked aria-describedby="lab-model-gpt"> <span><strong>GPT-Image-2.5 Sunburst</strong> <span class="lab-hint" id="lab-model-gpt">Text &amp; image editing</span></span></label>
-      <label class="lab-model"><input type="radio" name="model" value="nano-banana-pro" aria-describedby="lab-model-nano"> <span><strong>Nano Banana Pro</strong> <span class="lab-hint" id="lab-model-nano">~$0.14/image</span></span></label>
+      <label class="lab-model"><input type="radio" name="model" value="nano-banana-pro" aria-describedby="lab-model-nano"> <span><strong>Nano Banana Pro</strong> <span class="lab-hint" id="lab-model-nano">Alternative image model</span></span></label>
     </fieldset>
     <label>Number of variants<input type="number" name="count" min="1" max="4" value="2" required></label>
-    <p class="lab-hint">Paid generation: each concept uses two image calls (design the pack, then put it on the shelf). Expect about 30–70 s in total.</p>
+    <p class="lab-hint">Paid generation: each concept uses two image calls (design the pack, then put it on the shelf). Actual returned cost is shown with the results.</p>
     <button>Generate concepts</button>
+    <button type="button" id="lab-return-results" hidden>Back to concepts</button>
   </form>
   <section id="lab-concepts" hidden aria-labelledby="lab-concepts-h">
     <h3 id="lab-concepts-h">Packaging concepts</h3>
@@ -168,7 +169,18 @@ function writeHash() {
 }
 
 function showStep(step) {
+  dialog.dataset.step = step;
+  $("lab-history").open = false;
   for (const id of ["lab-pick", "lab-confirm", "lab-brief", "lab-results"]) $(id).hidden = id !== `lab-${step}`;
+  $("lab-context").hidden = !["confirm", "brief"].includes(step);
+  $("lab-context-photo").src = `${base()}/source.png`;
+  $("lab-concepts").hidden = step !== "results";
+  $("lab-selection-help").hidden = step !== "pick";
+  const current = step === "results" ? "compare" : step === "brief" ? "brief" : "select";
+  for (const item of dialog.querySelectorAll("[data-step]")) {
+    if (item.dataset.step === current) item.setAttribute("aria-current", "step");
+    else item.removeAttribute("aria-current");
+  }
   $("lab-current").hidden = step === "pick" || !S.product;
   if (S.product) {
     $("lab-cutout").src = `${base()}/products/${S.pid}/cutout.png`;
@@ -411,7 +423,7 @@ async function pollVariants(token) {
     const n = v.total ?? "?";
     if (v.state === "done") return status(`Done · ${n} concept${n === 1 ? "" : "s"}.`);
     if (v.state === "failed") throw new Error(v.error || "Generation failed.");
-    status(`Generating packaging concepts… ${v.done_count ?? 0}/${n} done. Each concept takes two image calls (design, then shelf placement), about 30–70 s in total. Keep this tab open.`, { busy: true });
+    status(`Generating packaging concepts… ${v.done_count ?? 0}/${n} done. Each concept uses two paid image calls (design, then shelf placement). Keep this tab open.`, { busy: true });
     await sleep(2500);
     if (token !== S.token) return;
   }

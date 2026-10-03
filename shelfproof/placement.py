@@ -398,6 +398,22 @@ def load_inputs(job: Path, pid: str):
     return src, labels, mask, build_context(layout, product, labels, mask)
 
 
+def packaging_path(job: Path, pid: str, packaging):
+    if packaging is None:
+        return None
+    if not isinstance(packaging, dict):
+        raise ValueError("packaging must be {vid, concept} or null for the original")
+    vid, concept = packaging.get("vid"), packaging.get("concept")
+    if not isinstance(vid, str) or not re.fullmatch(r"[0-9a-f]{8}", vid):
+        raise ValueError("Invalid packaging variant set")
+    if type(concept) is not int or not 1 <= concept <= 4:
+        raise ValueError("Packaging concept must be 1-4")
+    path = job / "products" / pid / "variants" / vid / f"shelf_{concept}.png"
+    if not path.is_file():
+        raise ValueError("Packaging concept is not ready for this product")
+    return path
+
+
 def execute_run(job: Path, rid: str, predict, commit=lambda: None) -> dict:
     """Render every slot, score slot x persona saliency maps from predict(calls) (an ordered iterator of
     log-density arrays for (job_id, rid, slot, distance_m, photo_distance_m) tuples) and write results."""
@@ -416,6 +432,12 @@ def execute_run(job: Path, rid: str, predict, commit=lambda: None) -> dict:
     try:
         save()
         src, labels, mask, ctx = load_inputs(job, req["pid"])
+        concept = packaging_path(job, req["pid"], req.get("packaging"))
+        if concept:
+            with Image.open(concept) as img:
+                if img.size != ctx["size"]:
+                    raise ValueError("Packaging concept must match the source image size")
+                src = np.where(mask[..., None], np.asarray(img.convert("RGB")), src)
         scenes = []
         for i, slot in enumerate(slots):
             scene, lab, P = render_scene(src, labels, mask, ctx, slot)
@@ -442,7 +464,8 @@ def execute_run(job: Path, rid: str, predict, commit=lambda: None) -> dict:
             raise RuntimeError(f"Saliency returned {status['done_count']} of {total} maps")
         status["timings"]["saliency_wall_s"] = round(time.perf_counter() - sal_started, 2)
         results = {"slots": out, **summarise(out, personas), "personas": personas, "assumptions": assumptions,
-                   "formula": FORMULA, "disclaimer": DISCLAIMER, "model": req.get("model", {})}
+                   "formula": FORMULA, "disclaimer": DISCLAIMER, "model": req.get("model", {}),
+                   "packaging": req.get("packaging")}
         status["timings"]["total_s"] = round(time.perf_counter() - started, 2)
         (run / "results.json").write_text(json.dumps(results, allow_nan=False))
         status.update(state="done", stage="done")
