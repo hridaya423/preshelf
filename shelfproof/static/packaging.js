@@ -364,10 +364,15 @@ $("lab-confirm").addEventListener("submit", async (e) => {
 });
 
 function toBrief() {
+  S.token++;
   showStep("brief");
+  $("lab-return-results").hidden = !S.vid;
   status("Describe who the new packaging is for.");
-  $("lab-audience").focus();
+  $("lab-audience").focus({ preventScroll: true });
 }
+$("lab-edit-brief").onclick = toBrief;
+$("lab-return-results").onclick = () => showResults(false);
+$("lab-theme").onclick = () => $("theme")?.click();
 
 for (const chip of dialog.querySelectorAll(".lab-chip")) chip.onclick = () => { $("lab-audience").value = chip.textContent; };
 
@@ -401,10 +406,13 @@ function rememberSet(pid, vid) {
   loadProducts().catch(fail);
 }
 
-async function showResults() {
+async function showResults(restoreBrief = true) {
   const token = ++S.token;
+  S.restoreBrief = restoreBrief;
   S.filesKey = "";
   S.compareK = null;
+  S.compareMode = "wipe";
+  $("lab-results-empty").hidden = false;
   $("lab-grid").replaceChildren();
   $("lab-summary").hidden = true;
   $("lab-compare").hidden = true;
@@ -430,6 +438,13 @@ async function pollVariants(token) {
 }
 
 function renderResults(v, path) {
+  if (S.restoreBrief && v.brief) {
+    for (const [key, value] of Object.entries(v.brief)) {
+      const input = $("lab-brief").elements.namedItem(key);
+      if (input && value != null) input.value = String(value);
+    }
+    S.restoreBrief = false;
+  }
   const names = Array.isArray(v.files) ? v.files.map(file) : [];
   const has = (name) => names.includes(name);
   const total = Math.max(Number(v.total) || 0, ...names.map((n) => Number(n.match(/_(\d)\.png$/)?.[1]) || 0));
@@ -452,19 +467,19 @@ function renderResults(v, path) {
       continue;
     }
     cards.push(`
-    <article class="lab-card" aria-labelledby="lab-card-${k}">
-      <div class="lab-card-head"><h4 id="lab-card-${k}">Concept ${k}</h4>${placement ? `<span class="lab-tag">${placement}</span>` : ""}</div>
-      ${has(pack) ? `<figure><img class="lab-packshot" src="${esc(url(pack))}" alt="Concept ${k} packshot" loading="lazy"><figcaption>Packshot</figcaption></figure>` : ""}
-      ${has(shelf) ? `<figure><img src="${esc(url(shelf))}" alt="Concept ${k} on the shelf" loading="lazy"><figcaption>On shelf</figcaption></figure>` : `<p class="lab-hint">${running ? "Placing on shelf…" : "No shelf image."}</p>`}
-      ${v.prompts?.[k - 1] ? `<details><summary>Prompt</summary><p>${esc(v.prompts[k - 1])}</p></details>` : ""}
-      ${has(shelf) ? `<div class="lab-row">
-        <button type="button" class="lab-view3d" data-action="view3d" data-k="${k}">View on 3D shelf</button>
-        <button type="button" class="lab-compare-btn" data-action="compare" data-k="${k}" aria-pressed="false">Compare with original</button>
-      </div>` : ""}
-      <p class="lab-row lab-downloads">
-        ${has(pack) ? `<a href="${esc(url(pack))}" download="concept_${k}_packshot.png">Download packshot</a>` : ""}
-        ${has(shelf) ? `<a href="${esc(url(shelf))}" download="concept_${k}_shelf.png">Download shelf</a>` : ""}
-      </p>
+    <article class="lab-card" aria-label="Concept ${k}">
+      <button type="button" class="lab-compare-btn" data-action="compare" data-k="${k}" aria-pressed="false">
+        <img class="lab-packshot" src="${esc(url(has(pack) ? pack : shelf))}" alt="" loading="lazy">
+        <span><strong>Concept ${k}</strong><span class="lab-hint">${placement || (running ? "Placing on shelf…" : "Packshot available")}</span><span class="lab-selected-label">Selected</span></span>
+      </button>
+      <div class="lab-card-options" hidden>
+        ${has(shelf) ? `<button type="button" class="lab-view3d" data-action="view3d" data-k="${k}">View on 3D shelf</button>` : ""}
+        <p class="lab-row lab-downloads">
+          ${has(pack) ? `<a href="${esc(url(pack))}" download="concept_${k}_packshot.png">Download packshot</a>` : ""}
+          ${has(shelf) ? `<a href="${esc(url(shelf))}" download="concept_${k}_shelf.png">Download shelf</a>` : ""}
+        </p>
+        ${v.prompts?.[k - 1] ? `<details><summary>Generation prompt</summary><p>${esc(v.prompts[k - 1])}</p></details>` : ""}
+      </div>
     </article>`);
   }
   $("lab-grid").innerHTML = cards.join("") || (running ? "" : `<p class="lab-hint">No concepts were produced.</p>`);

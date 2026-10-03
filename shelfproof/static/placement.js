@@ -322,6 +322,8 @@ async function selectProduct(pid, rid) {
   const token = ++S.token;
   setRunning(false);
   S.pid = pid; S.rid = null; S.cand = null; S.slots = []; S.R = null;
+  $("pl-design").value = "";
+  photo.src = `${base()}/source.png`;
   pack.hidden = true;
   showView(false);
   try { localStorage.setItem(storeKey(), pid); } catch { /* storage unavailable */ }
@@ -566,5 +568,9 @@ async function showPack(pid, vid, start) {
   <div class="pl-multi">${R.rows.map((r) => `<figure class="pl-heat" style="--pl-op:0.8;margin:0"><img src="${esc(`${base()}/${r.image}`)}" alt="${esc(r.label)} on the shelf"><img class="pl-over" src="${esc(`${base()}${url}/${file(r.heatmap)}`)}" alt=""><figcaption class="pl-hint">${esc(r.label)} · ${pct(r.saliency_share)}</figcaption></figure>`).join("")}</div>`;
 }
 
+$("pl-design").onchange = () => {
+  const [vid, k] = $("pl-design").value.split(":");
+  photo.src = vid ? `${base()}/products/${S.pid}/variants/${vid}/shelf_${k}.png` : `${base()}/source.png`;
+};
 $("pl-pack-run").onclick = () => showPack(S.pid, $("pl-pack-set").value, true).catch(fail);
 $("pl-pack-set").onchange = () => showPack(S.pid, $("pl-pack-set").value, false).catch(fail);
